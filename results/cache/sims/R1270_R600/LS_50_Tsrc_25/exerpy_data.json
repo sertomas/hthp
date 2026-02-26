@@ -1,0 +1,681 @@
+{
+  "components": {
+    "Compressor": {
+      "COMP1": {
+        "name": "COMP1",
+        "type": "Compressor",
+        "parameters": {
+          "P": 588634.3570449055,
+          "P_unit": "watt",
+          "pr": 4.498362462883566,
+          "pr_unit": "dimensionless",
+          "dp": -30.592398078508502,
+          "dp_unit": "bar",
+          "eta_s": 0.74,
+          "eta_s_unit": "dimensionless",
+          "igva_unit": "degree"
+        }
+      },
+      "COMP2": {
+        "name": "COMP2",
+        "type": "Compressor",
+        "parameters": {
+          "P": 590910.0877120867,
+          "P_unit": "watt",
+          "pr": 2.9047174132706424,
+          "pr_unit": "dimensionless",
+          "dp": -16.06907973962003,
+          "dp_unit": "bar",
+          "eta_s": 0.74,
+          "eta_s_unit": "dimensionless",
+          "igva_unit": "degree"
+        }
+      }
+    },
+    "HeatExchanger": {
+      "IHX": {
+        "name": "IHX",
+        "type": "MovingBoundaryHeatExchanger",
+        "parameters": {
+          "Q": -1610593.269895978,
+          "Q_unit": "watt",
+          "kA": 107154.05479190506,
+          "kA_unit": "watt / kelvin",
+          "td_log": 15.0306329800004,
+          "td_log_unit": "delta_degree_Celsius",
+          "ttd_u": 33.66270531646711,
+          "ttd_u_unit": "delta_degree_Celsius",
+          "ttd_l": 4.999999999999659,
+          "ttd_l_unit": "delta_degree_Celsius",
+          "ttd_min": 4.999999999999659,
+          "ttd_min_unit": "delta_degree_Celsius",
+          "pr1": 0.9923736261507131,
+          "pr1_unit": "dimensionless",
+          "pr2": 0.982530643422737,
+          "pr2_unit": "dimensionless",
+          "dp1": 0.3,
+          "dp1_unit": "bar",
+          "dp2": 0.15,
+          "dp2_unit": "bar",
+          "zeta1": 135573.9437336193,
+          "zeta1_unit": "dimensionless",
+          "zeta2": 4357.8303154892355,
+          "zeta2_unit": "dimensionless",
+          "eff_cold": 0.6718327908422941,
+          "eff_cold_unit": "dimensionless",
+          "eff_hot": 0.9317086423945875,
+          "eff_hot_unit": "dimensionless",
+          "eff_max": 0.9317086423945875,
+          "eff_max_unit": "dimensionless",
+          "UA": 132517.86403997708,
+          "UA_unit": "watt / kelvin",
+          "re_exp_r_unit": "dimensionless",
+          "re_exp_sf_unit": "dimensionless",
+          "alpha_ratio_unit": "dimensionless",
+          "area_ratio_unit": "dimensionless",
+          "td_pinch": 5.0,
+          "td_pinch_unit": "delta_degree_Celsius"
+        }
+      },
+      "SNK_HX": {
+        "name": "SNK_HX",
+        "type": "MovingBoundaryHeatExchanger",
+        "parameters": {
+          "Q": -2201503.3576080627,
+          "Q_unit": "watt",
+          "kA": 345499.2154752546,
+          "kA_unit": "watt / kelvin",
+          "td_log": 6.37194893360254,
+          "td_log_unit": "delta_degree_Celsius",
+          "ttd_u": 7.974480582983574,
+          "ttd_u_unit": "delta_degree_Celsius",
+          "ttd_l": 5.0,
+          "ttd_l_unit": "delta_degree_Celsius",
+          "ttd_min": 5.000000000000796,
+          "ttd_min_unit": "delta_degree_Celsius",
+          "pr1": 0.9897982267422037,
+          "pr1_unit": "dimensionless",
+          "pr2": 0.9195402298850575,
+          "pr2_unit": "dimensionless",
+          "dp1": 0.25,
+          "dp1_unit": "bar",
+          "dp2": 0.175,
+          "dp2_unit": "bar",
+          "zeta1": 32330.00968758249,
+          "zeta1_unit": "dimensionless",
+          "zeta2": 48694.55852732423,
+          "zeta2_unit": "dimensionless",
+          "eff_cold": 0.9922600532940968,
+          "eff_cold_unit": "dimensionless",
+          "eff_hot": 0.9197651143309328,
+          "eff_hot_unit": "dimensionless",
+          "eff_max": 0.9922600532940968,
+          "eff_max_unit": "dimensionless",
+          "UA": 586784.2492674921,
+          "UA_unit": "watt / kelvin",
+          "re_exp_r_unit": "dimensionless",
+          "re_exp_sf_unit": "dimensionless",
+          "alpha_ratio_unit": "dimensionless",
+          "area_ratio_unit": "dimensionless",
+          "td_pinch": 2.3466277063554344,
+          "td_pinch_unit": "delta_degree_Celsius"
+        }
+      },
+      "SRC_HX": {
+        "name": "SRC_HX",
+        "type": "MovingBoundaryHeatExchanger",
+        "parameters": {
+          "Q": -1021958.9128510728,
+          "Q_unit": "watt",
+          "kA": 190590.1050403567,
+          "kA_unit": "watt / kelvin",
+          "td_log": 5.362077494184061,
+          "td_log_unit": "delta_degree_Celsius",
+          "ttd_u": 5.741226800245954,
+          "ttd_u_unit": "delta_degree_Celsius",
+          "ttd_l": 5.0,
+          "ttd_l_unit": "delta_degree_Celsius",
+          "ttd_min": 5.000000000000057,
+          "ttd_min_unit": "delta_degree_Celsius",
+          "pr1": 0.9523809523809523,
+          "pr1_unit": "dimensionless",
+          "pr2": 0.9803806744776175,
+          "pr2_unit": "dimensionless",
+          "dp1": 0.15,
+          "dp1_unit": "bar",
+          "dp2": 0.175,
+          "dp2_unit": "bar",
+          "zeta1": 7743.280261352835,
+          "zeta1_unit": "dimensionless",
+          "zeta2": 14721.624886386924,
+          "zeta2_unit": "dimensionless",
+          "eff_cold": 0.9439535339377682,
+          "eff_cold_unit": "dimensionless",
+          "eff_hot": 0.5000168344365777,
+          "eff_hot_unit": "dimensionless",
+          "eff_max": 0.9439535339377682,
+          "eff_max_unit": "dimensionless",
+          "UA": 137855.0934772836,
+          "UA_unit": "watt / kelvin",
+          "re_exp_r_unit": "dimensionless",
+          "re_exp_sf_unit": "dimensionless",
+          "alpha_ratio_unit": "dimensionless",
+          "area_ratio_unit": "dimensionless",
+          "td_pinch": 5.000000000000057,
+          "td_pinch_unit": "delta_degree_Celsius"
+        }
+      }
+    },
+    "Motor": {
+      "MOT1": {
+        "name": "MOT1",
+        "type": "Motor",
+        "parameters": {
+          "eta": 0.985,
+          "eta_unit": "dimensionless",
+          "delta_power": 8963.974980379338,
+          "delta_power_unit": "watt"
+        }
+      },
+      "MOT2": {
+        "name": "MOT2",
+        "type": "Motor",
+        "parameters": {
+          "eta": 0.985,
+          "eta_unit": "dimensionless",
+          "delta_power": 8998.630777341546,
+          "delta_power_unit": "watt"
+        }
+      },
+      "MOT3": {
+        "name": "MOT3",
+        "type": "Motor",
+        "parameters": {
+          "eta": 0.985,
+          "eta_unit": "dimensionless",
+          "delta_power": 13.982743593286386,
+          "delta_power_unit": "watt"
+        }
+      },
+      "MOT4": {
+        "name": "MOT4",
+        "type": "Motor",
+        "parameters": {
+          "eta": 0.985,
+          "eta_unit": "dimensionless",
+          "delta_power": 0.35327960210691245,
+          "delta_power_unit": "watt"
+        }
+      }
+    },
+    "Pump": {
+      "SNK_PUMP": {
+        "name": "SNK_PUMP",
+        "type": "Pump",
+        "parameters": {
+          "P": 23.19869387173094,
+          "P_unit": "watt",
+          "pr": 1.0875,
+          "pr_unit": "dimensionless",
+          "dp": -0.17500000000000002,
+          "dp_unit": "bar",
+          "eta_s": 0.8,
+          "eta_s_unit": "dimensionless"
+        }
+      },
+      "SRC_PUMP": {
+        "name": "SRC_PUMP",
+        "type": "Pump",
+        "parameters": {
+          "P": 918.2001626256283,
+          "P_unit": "watt",
+          "pr": 1.05,
+          "pr_unit": "dimensionless",
+          "dp": -0.15000000000000002,
+          "dp_unit": "bar",
+          "eta_s": 0.8,
+          "eta_s_unit": "dimensionless"
+        }
+      }
+    },
+    "Valve": {
+      "VAL1": {
+        "name": "VAL1",
+        "type": "Valve",
+        "parameters": {
+          "pr": 0.2284944196356607,
+          "pr_unit": "dimensionless",
+          "dp": 30.1173980785085,
+          "dp_unit": "bar",
+          "zeta": 6796618.982288205,
+          "zeta_unit": "dimensionless"
+        }
+      },
+      "VAL2": {
+        "name": "VAL2",
+        "type": "Valve",
+        "parameters": {
+          "pr": 0.35400006044437243,
+          "pr_unit": "dimensionless",
+          "dp": 15.669079739620031,
+          "dp_unit": "bar",
+          "zeta": 1205036.1837033185,
+          "zeta_unit": "dimensionless"
+        }
+      }
+    },
+    "CycleCloser": {
+      "cc1": {
+        "name": "cc1",
+        "type": "CycleCloser",
+        "parameters": {
+          "mass_deviation": 0.0,
+          "mass_deviation_unit": "kilogram / second",
+          "fluid_deviation": 0.0,
+          "fluid_deviation_unit": "dimensionless"
+        }
+      },
+      "cc2": {
+        "name": "cc2",
+        "type": "CycleCloser",
+        "parameters": {
+          "mass_deviation": 0.0,
+          "mass_deviation_unit": "kilogram / second",
+          "fluid_deviation": 0.0,
+          "fluid_deviation_unit": "dimensionless"
+        }
+      }
+    },
+    "PowerBus": {
+      "electricity distribution": {
+        "name": "electricity distribution",
+        "type": "PowerBus",
+        "parameters": {}
+      }
+    }
+  },
+  "connections": {
+    "11": {
+      "source_component": "source inlet",
+      "source_connector": 0,
+      "target_component": "SRC_PUMP",
+      "target_connector": 0,
+      "mass_composition": {
+        "water": 1.0
+      },
+      "kind": "material",
+      "m": 48.83064795034395,
+      "T": 298.15000000002425,
+      "p": 300000.0,
+      "h": 105104.08264305249,
+      "s": 367.1483541315811,
+      "v": 0.04897083944930018,
+      "e_T": 176.29945538566608,
+      "e_M": 199.022762742527,
+      "e_PH": 375.3222181281931
+    },
+    "12": {
+      "source_component": "SRC_PUMP",
+      "source_connector": 0,
+      "target_component": "SRC_HX",
+      "target_connector": 0,
+      "mass_composition": {
+        "water": 1.0
+      },
+      "kind": "material",
+      "m": 48.83064795034395,
+      "T": 298.15117581947305,
+      "p": 315000.0,
+      "h": 105122.88641079195,
+      "s": 367.16096772974134,
+      "v": 0.048970522093923864,
+      "e_T": 176.3800271452783,
+      "e_M": 214.04828242169035,
+      "e_PH": 390.42830956696866
+    },
+    "13": {
+      "source_component": "SRC_HX",
+      "source_connector": 0,
+      "target_component": "source outlet",
+      "target_connector": 0,
+      "mass_composition": {
+        "water": 1.0
+      },
+      "kind": "material",
+      "m": 48.83064795034395,
+      "T": 293.1500000000128,
+      "p": 300000.0,
+      "h": 84194.2492587659,
+      "s": 296.4216479103904,
+      "v": 0.048913892432026755,
+      "e_T": -1.588712223110633e-07,
+      "e_M": 199.022762742527,
+      "e_PH": 199.02276258365578
+    },
+    "21": {
+      "source_component": "SRC_HX",
+      "source_connector": 1,
+      "target_component": "COMP1",
+      "target_connector": 0,
+      "mass_composition": {
+        "R1270": 1.0
+      },
+      "kind": "material",
+      "m": 5.863441467657077,
+      "T": 292.4099490192271,
+      "p": 874477.6564202085,
+      "h": 599260.3126794467,
+      "s": 2390.1222927480853,
+      "v": 0.32894511109173574,
+      "e_T": 1.692115105191533,
+      "e_M": 117705.0097982075,
+      "e_PH": 117706.70191331269
+    },
+    "22": {
+      "source_component": "COMP1",
+      "source_connector": 0,
+      "target_component": "IHX",
+      "target_connector": 0,
+      "mass_composition": {
+        "R1270": 1.0
+      },
+      "kind": "material",
+      "m": 5.863441467657077,
+      "T": 383.64140500893234,
+      "p": 3933717.4642710583,
+      "h": 699650.9041591827,
+      "s": 2459.0032008008584,
+      "v": 0.07793109746375275,
+      "e_T": 67267.42398890201,
+      "e_M": 130637.43120847631,
+      "e_PH": 197904.85519737832
+    },
+    "22c": {
+      "source_component": "IHX",
+      "source_connector": 0,
+      "target_component": "cc1",
+      "target_connector": 0,
+      "mass_composition": {
+        "R1270": 1.0
+      },
+      "kind": "material",
+      "m": 5.863441467657077,
+      "T": 350.75504566398075,
+      "p": 3903717.4642710583,
+      "h": 424966.9529711202,
+      "s": 1696.2895030665284,
+      "v": 0.015186590691262217,
+      "e_T": 16230.339271089411,
+      "e_M": 130580.08522904519,
+      "e_PH": 146810.4245001346
+    },
+    "23": {
+      "source_component": "cc1",
+      "source_connector": 0,
+      "target_component": "VAL1",
+      "target_connector": 0,
+      "mass_composition": {
+        "R1270": 1.0
+      },
+      "kind": "material",
+      "m": 5.863441467657077,
+      "T": 350.75504566398075,
+      "p": 3903717.4642710583,
+      "h": 424966.9529711202,
+      "s": 1696.2895030665284,
+      "v": 0.015186590691262217,
+      "e_T": 16230.339271089411,
+      "e_M": 130580.08522904519,
+      "e_PH": 146810.4245001346
+    },
+    "24": {
+      "source_component": "VAL1",
+      "source_connector": 0,
+      "target_component": "SRC_HX",
+      "target_connector": 1,
+      "mass_composition": {
+        "R1270": 1.0
+      },
+      "kind": "material",
+      "m": 5.863441467657077,
+      "T": 288.15000000001277,
+      "p": 891977.6564202085,
+      "h": 424966.9529711202,
+      "s": 1782.1669065214849,
+      "v": 0.17128457473733402,
+      "e_T": 2956.2542806547717,
+      "e_M": 118679.20939665937,
+      "e_PH": 121635.46367731414
+    },
+    "31": {
+      "source_component": "IHX",
+      "source_connector": 1,
+      "target_component": "COMP2",
+      "target_connector": 0,
+      "mass_composition": {
+        "R600": 1.0
+      },
+      "kind": "material",
+      "m": 10.612144251388122,
+      "T": 349.9786996924652,
+      "p": 843646.3922502483,
+      "h": 697167.6364564493,
+      "s": 2498.287348992735,
+      "v": 0.5236833328907399,
+      "e_T": 58341.84536519076,
+      "e_M": 29757.86471113906,
+      "e_PH": 88099.71007632982
+    },
+    "32": {
+      "source_component": "COMP2",
+      "source_connector": 0,
+      "target_component": "SNK_HX",
+      "target_connector": 0,
+      "mass_composition": {
+        "R600": 1.0
+      },
+      "kind": "material",
+      "m": 10.612144251388122,
+      "T": 401.3345719109458,
+      "p": 2450554.366212251,
+      "h": 752850.0766602557,
+      "s": 2534.5151885962164,
+      "v": 0.15408842521405786,
+      "e_T": 100637.88855239254,
+      "e_M": 32524.07054798311,
+      "e_PH": 133161.95910037565
+    },
+    "32c": {
+      "source_component": "SNK_HX",
+      "source_connector": 0,
+      "target_component": "cc2",
+      "target_connector": 0,
+      "mass_composition": {
+        "R600": 1.0
+      },
+      "kind": "material",
+      "m": 10.612144251388122,
+      "T": 398.3626620950139,
+      "p": 2425554.366212251,
+      "h": 545398.7543395951,
+      "s": 2014.7342641928537,
+      "v": 0.025703748548431382,
+      "e_T": 45603.28843923754,
+      "e_M": 32481.126329323277,
+      "e_PH": 78084.41476856082
+    },
+    "33": {
+      "source_component": "cc2",
+      "source_connector": 0,
+      "target_component": "VAL2",
+      "target_connector": 0,
+      "mass_composition": {
+        "R600": 1.0
+      },
+      "kind": "material",
+      "m": 10.612144251388122,
+      "T": 398.3626620950139,
+      "p": 2425554.366212251,
+      "h": 545398.7543395951,
+      "s": 2014.7342641928537,
+      "v": 0.025703748548431382,
+      "e_T": 45603.28843923754,
+      "e_M": 32481.126329323277,
+      "e_PH": 78084.41476856082
+    },
+    "34": {
+      "source_component": "VAL2",
+      "source_connector": 0,
+      "target_component": "IHX",
+      "target_connector": 1,
+      "mass_composition": {
+        "R600": 1.0
+      },
+      "kind": "material",
+      "m": 10.612144251388122,
+      "T": 345.7550456639811,
+      "p": 858646.3922502483,
+      "h": 545398.7543395951,
+      "s": 2057.4311711320124,
+      "v": 0.27662539397719355,
+      "e_T": 35784.07365466311,
+      "e_M": 29783.74284468335,
+      "e_PH": 65567.81649934646
+    },
+    "41": {
+      "source_component": "sink inlet",
+      "source_connector": 0,
+      "target_component": "SNK_PUMP",
+      "target_connector": 0,
+      "mass_composition": {
+        "water": 1.0
+      },
+      "kind": "material",
+      "m": 1.0,
+      "T": 393.3600913279622,
+      "p": 200000.0,
+      "h": 504704.18503804435,
+      "s": 1530.1740813513566,
+      "v": 0.0010605159811681972,
+      "e_T": 58935.58268957684,
+      "e_M": 98.84998906610508,
+      "e_PH": 59034.432678642945
+    },
+    "42": {
+      "source_component": "SNK_PUMP",
+      "source_connector": 0,
+      "target_component": "SNK_HX",
+      "target_connector": 1,
+      "mass_composition": {
+        "water": 1.0
+      },
+      "kind": "material",
+      "m": 1.0,
+      "T": 393.3626620950131,
+      "p": 217500.0,
+      "h": 504727.3837319161,
+      "s": 1530.1858764342837,
+      "v": 0.0010605084537582067,
+      "e_T": 58937.793087585014,
+      "e_M": 116.38055636950605,
+      "e_PH": 59054.17364395452
+    },
+    "43": {
+      "source_component": "SNK_HX",
+      "source_connector": 1,
+      "target_component": "sink outlet",
+      "target_connector": 0,
+      "mass_composition": {
+        "water": 1.0
+      },
+      "kind": "material",
+      "m": 1.0,
+      "T": 393.3600913279622,
+      "p": 200000.0,
+      "h": 2706230.741339982,
+      "s": 7126.894757487327,
+      "v": 0.8856816771343171,
+      "e_T": 619783.4727822545,
+      "e_M": 98.84998906610508,
+      "e_PH": 619882.3227713206
+    },
+    "e1": {
+      "source_component": "grid",
+      "source_connector": 999,
+      "target_component": "electricity distribution",
+      "target_connector": 0,
+      "kind": "power",
+      "energy_flow": 1198462.7853944108
+    },
+    "e2": {
+      "source_component": "electricity distribution",
+      "source_connector": 0,
+      "target_component": "MOT1",
+      "target_connector": 0,
+      "kind": "power",
+      "energy_flow": 597598.3320252855
+    },
+    "e3": {
+      "source_component": "MOT1",
+      "source_connector": 0,
+      "target_component": "COMP1",
+      "target_connector": 1,
+      "kind": "power",
+      "energy_flow": 588634.3570449061
+    },
+    "e4": {
+      "source_component": "electricity distribution",
+      "source_connector": 1,
+      "target_component": "MOT2",
+      "target_connector": 0,
+      "kind": "power",
+      "energy_flow": 599908.7184894327
+    },
+    "e5": {
+      "source_component": "MOT2",
+      "source_connector": 0,
+      "target_component": "COMP2",
+      "target_connector": 1,
+      "kind": "power",
+      "energy_flow": 590910.0877120912
+    },
+    "e6": {
+      "source_component": "electricity distribution",
+      "source_connector": 2,
+      "target_component": "MOT3",
+      "target_connector": 0,
+      "kind": "power",
+      "energy_flow": 932.1829062190924
+    },
+    "e7": {
+      "source_component": "MOT3",
+      "source_connector": 0,
+      "target_component": "SRC_PUMP",
+      "target_connector": 1,
+      "kind": "power",
+      "energy_flow": 918.200162625806
+    },
+    "e8": {
+      "source_component": "electricity distribution",
+      "source_connector": 3,
+      "target_component": "MOT4",
+      "target_connector": 0,
+      "kind": "power",
+      "energy_flow": 23.551973473794195
+    },
+    "e9": {
+      "source_component": "MOT4",
+      "source_connector": 0,
+      "target_component": "SNK_PUMP",
+      "target_connector": 1,
+      "kind": "power",
+      "energy_flow": 23.198693871687283
+    }
+  },
+  "ambient_conditions": {
+    "Tamb": 293.15,
+    "Tamb_unit": "K",
+    "pamb": 101325,
+    "pamb_unit": "Pa"
+  }
+}

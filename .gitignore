@@ -1,0 +1,6 @@
+.claude/
+hthp/
+__pycache__/
+*.pyc
+*.egg-info/
+.vscode/

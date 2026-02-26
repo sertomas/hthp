@@ -1,0 +1,8 @@
+exerpy
+tespy
+numpy
+pandas
+matplotlib
+CoolProp
+fluprodia
+jupyter
