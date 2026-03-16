@@ -511,10 +511,8 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         # --- Sizing data for cost correlations ---
         # Compressor inlet volumetric flow [m³/h]: V_dot = m / rho * 3600
-        rho_21 = PropsSI("D", "H", c21.h.val * 1000, "P", c21.p.val * 1e5, fluid_cycle1)
-        rho_31 = PropsSI("D", "H", c31.h.val * 1000, "P", c31.p.val * 1e5, fluid_cycle2)
-        V_dot_comp1 = c21.m.val / rho_21 * 3600  # m³/h
-        V_dot_comp2 = c31.m.val / rho_31 * 3600  # m³/h
+        V_dot_comp1 = c21.v.val # m³/h
+        V_dot_comp2 = c31.v.val # m³/h
 
         # Shaft powers [kW] (TESPy P.val is in kW)
         W_comp1 = abs(comp1.P.val)
