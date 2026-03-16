@@ -325,11 +325,17 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         return None
 
     try:
-        p_evap_c1 = PropsSI("P", "T", T_evap_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
-        p_cond_c1 = PropsSI("P", "T", T_cond_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
-        p_cond_c2 = PropsSI("P", "T", T_cond_c2_est + 273.15, "Q", 1, fluid_cycle2) / 1e5
 
-        nw = Network(T_unit="C", p_unit="bar", h_unit="kJ / kg", m_unit="kg / s", iterinfo=False)
+        nw = Network(iterinfo=False)
+        nw.units.set_defaults(
+            temperature="°C",
+            pressure="bar",
+            enthalpy="kJ/kg",
+            mass_flow="kg/s",
+            power="kW",
+            heat="kW",
+            volumetric_flow="m3/h"
+        )
 
         # Source water loop
         src_in = Source("source inlet")
@@ -407,13 +413,13 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         # Cycle 1 boundary conditions
         c21.set_attr(fluid={fluid_cycle1: 1}, td_dew=pinch)
-        c22.set_attr(p=p_cond_c1)
+        c22.set_attr(T_dew=T_cond_c1_est)
         c23.set_attr(td_bubble=pinch)
-        c24.set_attr(p=p_evap_c1)
+        c24.set_attr(T_dew=T_evap_c1_est)
 
         # Cycle 2 boundary conditions
         c31.set_attr(fluid={fluid_cycle2: 1}, td_dew=pinch)
-        c32.set_attr(p=p_cond_c2)
+        c32.set_attr(T_dew=T_cond_c2_est)
         c33.set_attr(x=0)
         c34.set_attr(T=T_evap_c2_val)
 
@@ -437,9 +443,9 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         nw.solve("design")
 
         # Second solve: relax pressures and use pinch constraints
-        c22.set_attr(p=None)
-        c24.set_attr(p=None)
-        c32.set_attr(p=None)
+        c22.set_attr(T_dew=None)
+        c24.set_attr(T_dew=None)
+        c32.set_attr(T_dew=None)
         src_hx.set_attr(ttd_l=5)
         ihx.set_attr(td_pinch=5)
         snk_hx.set_attr(ttd_l=5)
@@ -461,10 +467,10 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         # COP from energy balance (independent of exergy definitions)
         W_shaft_total = (abs(comp1.P.val) + abs(comp2.P.val)
-                         + abs(src_pump.P.val) + abs(snk_pump.P.val))  # W
+                         + abs(src_pump.P.val) + abs(snk_pump.P.val))  # kW
         eta_motor = 0.985
         W_el = W_shaft_total / eta_motor
-        COP = Q_H * 1000 / W_el  # Q_H [kW] → [W]
+        COP = Q_H / W_el
 
         # Exergy analysis — classify source water streams based on temperature vs Tamb
         ean = ExergyAnalysis.from_tespy(nw, Tamb=Tamb, pamb=pamb)
@@ -505,16 +511,14 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         # --- Sizing data for cost correlations ---
         # Compressor inlet volumetric flow [m³/h]: V_dot = m / rho * 3600
-        rho_21 = PropsSI("D", "H", c21.h.val * 1000, "P", c21.p.val * 1e5, fluid_cycle1)
-        rho_31 = PropsSI("D", "H", c31.h.val * 1000, "P", c31.p.val * 1e5, fluid_cycle2)
-        V_dot_comp1 = c21.m.val / rho_21 * 3600  # m³/h
-        V_dot_comp2 = c31.m.val / rho_31 * 3600  # m³/h
+        V_dot_comp1 = c21.v.val # m³/h
+        V_dot_comp2 = c31.v.val # m³/h
 
-        # Shaft powers [kW] (TESPy P.val is in W)
-        W_comp1 = abs(comp1.P.val) / 1000
-        W_comp2 = abs(comp2.P.val) / 1000
-        W_src_pump = abs(src_pump.P.val) / 1000
-        W_snk_pump = abs(snk_pump.P.val) / 1000
+        # Shaft powers [kW] (TESPy P.val is in kW)
+        W_comp1 = abs(comp1.P.val)
+        W_comp2 = abs(comp2.P.val)
+        W_src_pump = abs(src_pump.P.val)
+        W_snk_pump = abs(snk_pump.P.val)
 
         # HX areas [m²]: A = kA / U
         U_vals = {
@@ -649,9 +653,13 @@ def simulate_gas_heater(eta_gas=0.95):
     Q_H_W = 1.0 * (h_out_w - h_in_w)  # W (m = 1 kg/s)
     ti_W = Q_H_W / eta_gas  # CC thermal input [W]
 
-    nw = Network(
-        T_unit="C", p_unit="bar", h_unit="kJ / kg", m_unit="kg / s",
-        iterinfo=False,
+    nw = Network(iterinfo=False)
+    nw = Network(iterinfo=False)
+    nw.units.set_defaults(
+        temperature="°C",
+        pressure="bar",
+        enthalpy="kJ/kg",
+        mass_flow="kg/s",
     )
 
     # Components
