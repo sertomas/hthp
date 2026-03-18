@@ -27,18 +27,16 @@ FLUIDS_C1 = ["R290", "R1270", "R717"]
 FLUIDS_C2 = ["R600a", "R600", "R717"]
 
 # ── Base-case economic parameters ────────────────────────────────────────────
-BASE_FULL_LOAD_HOURS = 5500       # h/a
+BASE_FULL_LOAD_HOURS = 7500       # h/a (fixed, no sensitivity on this)
 BASE_E1_C = 18.0                  # ct/kWh
 
 # ── Alternative scenario parameters ─────────────────────────────────────────
 ALT_E1_C = 35.0                   # ct/kWh  (high electricity price)
-ALT_FULL_LOAD_HOURS = 8000        # h/a     (high utilisation)
 
 # ── Gas heater reference parameters ──────────────────────────────────────────
 BASE_GAS_C = 3.5                  # ct/kWh  (= 35 EUR/MWh)
 
 # ── Sensitivity ranges ───────────────────────────────────────────────────────
-FULL_LOAD_HOURS_RANGE = np.arange(2000, 8501, 500)
 E1_C_RANGE = np.arange(10, 41, 2.5)  # ct/kWh
 
 # ── Steam temperature (fixed boundary condition) ────────────────────────────
@@ -52,8 +50,16 @@ LIFT_SHARE_RANGE = [0.30, 0.40, 0.50, 0.60, 0.70]  # lower / upper
 LIFT_SHARE_DEFAULT = 0.50                             # base case (50/50)
 
 # ── T_source_in sensitivity ────────────────────────────────────────────────
-T_SOURCE_IN_RANGE = list(range(20, 61, 5))  # °C (source water inlet temperature)
+T_SOURCE_IN_RANGE = list(range(20, 61, 10))  # °C (source water inlet temperature)
 T_SOURCE_IN_DEFAULT = 20                     # °C
+
+# ── Source water constraints ──────────────────────────────────────────────
+#    Two modes for defining source water boundary conditions:
+#    - "fixed_delta_T": fix T_in and T_out = T_in - SOURCE_DELTA_T (m free)
+#    - "fixed_mass_flow": fix T_in and m = SOURCE_MASS_FLOW (T_out free)
+SOURCE_DELTA_T = 10                          # K (fixed for all T_source_in cases)
+SOURCE_MASS_FLOW = 40.0                      # kg/s (base case for fixed_mass_flow mode)
+SOURCE_MASS_FLOW_RANGE = [20, 30, 40, 50]   # kg/s (sensitivity range)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -113,10 +119,13 @@ class NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def sim_cache_folder(f1, f2, ls, T_src):
+def sim_cache_folder(f1, f2, ls, T_src, source_mode="fixed_delta_T"):
     """Return the cache directory for a specific simulation combo."""
     ls_pct = int(round(ls * 100))
-    return os.path.join(SIM_CACHE_DIR, f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{int(T_src)}")
+    base = os.path.join(SIM_CACHE_DIR, f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{int(T_src)}")
+    if source_mode != "fixed_delta_T":
+        base += f"_{source_mode}"
+    return base
 
 
 def sim_key_to_str(key):

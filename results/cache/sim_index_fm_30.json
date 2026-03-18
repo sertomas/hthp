@@ -1,0 +1,902 @@
+{
+  "R290|R600a|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.3|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_30_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.4|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_40_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.5|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_50_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.6|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.6|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.6|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.6|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.6|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.6|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.6|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.6|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.6|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_60_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.7|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.7|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.7|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.7|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.7|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.7|20": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.7|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.7|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.7|20": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_70_Tsrc_20_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.3|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_30_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.4|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_40_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.5|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_50_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.6|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.6|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.6|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.6|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.6|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.6|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.6|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.6|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.6|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_60_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.7|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.7|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.7|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.7|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.7|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.7|30": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.7|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.7|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.7|30": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_70_Tsrc_30_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.3|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_30_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.4|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_40_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.5|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.5|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.5|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.5|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.5|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.5|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.5|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.5|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.5|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_50_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.6|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.6|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.6|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.6|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.6|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.6|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.6|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.6|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.6|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_60_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.7|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.7|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.7|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.7|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.7|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.7|40": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.7|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.7|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.7|40": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_70_Tsrc_40_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.3|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_30_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.4|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.4|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.4|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.4|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.4|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.4|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.4|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.4|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.4|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_40_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.5|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.5|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.5|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.5|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.5|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.5|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.5|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.5|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.5|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_50_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.6|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.6|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.6|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.6|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.6|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.6|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.6|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.6|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.6|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_60_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.7|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.7|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.7|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.7|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.7|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.7|50": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.7|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.7|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.7|50": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_70_Tsrc_50_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.3|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.3|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.3|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.3|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.3|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.3|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.3|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.3|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.3|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_30_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.4|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.4|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.4|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.4|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.4|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.4|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.4|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.4|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.4|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_40_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.5|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.5|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.5|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.5|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.5|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.5|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.5|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.5|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.5|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_50_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.6|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.6|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.6|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.6|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.6|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.6|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.6|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.6|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.6|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_60_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600a|0.7|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600a\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R600|0.7|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R600\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R290|R717|0.7|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R290_R717\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600a|0.7|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600a\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R600|0.7|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R600\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R1270|R717|0.7|60": {
+    "status": "failed",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R1270_R717\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600a|0.7|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600a\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R600|0.7|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R600\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  },
+  "R717|R717|0.7|60": {
+    "status": "ok",
+    "folder": "c:\\Users\\sergiotomasinelli\\Desktop\\hthp\\results\\cache\\sims\\R717_R717\\LS_70_Tsrc_60_fixed_mass_flow_m30"
+  }
+}
