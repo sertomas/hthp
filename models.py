@@ -24,7 +24,7 @@ from tespy.networks import Network
 from exerpy import ExergyAnalysis
 from exerpy.parser.from_tespy.tespy_parser import to_exerpy
 
-from config import NumpyEncoder
+from config import NumpyEncoder, SOURCE_DELTA_T, SOURCE_MASS_FLOW
 
 # Shared parameters
 Tamb = 293.15  # K
@@ -76,27 +76,19 @@ def get_U(fluid_a, fluid_b):
 
 def get_source_delta_T(T_src_in):
     """
-    Compute the source water temperature drop [K].
-
-    Rules:
-
-    - T_source_in ≈ 20 °C (environmental source): delta_T = 5 K.
-    - Otherwise: delta_T = min(10, T_source_in - T_ambient).
+    Return the fixed source water temperature drop [K].
 
     Parameters
     ----------
     T_src_in : float
-        Source water inlet temperature [°C].
+        Source water inlet temperature [°C] (unused, kept for API compat).
 
     Returns
     -------
     float
         Temperature drop [K].
     """
-    T_ambient = Tamb - 273.15  # 20 °C
-    if abs(T_src_in - T_ambient) < 1:
-        return 5.0
-    return min(10.0, T_src_in - T_ambient)
+    return float(SOURCE_DELTA_T)
 
 
 def _patch_dissipative_hx(ean):
@@ -270,7 +262,8 @@ def reconstruct_ean(exerpy_json_path, T_source_in_val):
 
 
 def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
-                   T_source_in_override=None):
+                   T_source_in_override=None, source_mode="fixed_delta_T",
+                   m_source=None):
     """
     Build and solve the cascaded HTHP network for a given fluid combination.
 
@@ -291,6 +284,13 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
     T_source_in_override : float, optional
         Source water inlet temperature [deg C].  Defaults to the module-level
         ``T_source_in`` (20 deg C).
+    source_mode : str, optional
+        Source water constraint mode:
+        - ``"fixed_delta_T"``: fix T_in and T_out = T_in - SOURCE_DELTA_T (m free).
+        - ``"fixed_mass_flow"``: fix T_in and m (T_out free).
+    m_source : float, optional
+        Source water mass flow [kg/s] for ``"fixed_mass_flow"`` mode.
+        Defaults to ``SOURCE_MASS_FLOW`` from config.
 
     Returns
     -------
@@ -408,8 +408,14 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         nw.add_conns(e1, e2, e3, e4, e5, e6, e7, e8, e9)
 
         # Source water boundary conditions
-        c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source)
-        c13.set_attr(T=T_src_out_val, p=Ref(c11, 1, 0))
+        if source_mode == "fixed_mass_flow":
+            m_val = m_source if m_source is not None else SOURCE_MASS_FLOW
+            c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source,
+                         m=m_val)
+            c13.set_attr(p=Ref(c11, 1, 0))
+        else:  # fixed_delta_T
+            c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source)
+            c13.set_attr(T=T_src_out_val, p=Ref(c11, 1, 0))
 
         # Cycle 1 boundary conditions
         c21.set_attr(fluid={fluid_cycle1: 1}, td_dew=pinch)
@@ -452,14 +458,14 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         nw.solve("design")
 
-        # Reject if cycle-1 pressure reaches 90 % of its critical pressure.
+        # Reject if cycle-1 pressure reaches 95 % of its critical pressure.
         # Cycle 2 is not checked — its condensing conditions are fixed by the
         # steam temperature and already validated by the T_crit pre-check.
         p_crit_c1 = PropsSI("Pcrit", fluid_cycle1) / 1e5  # bar
         for conn in [c21, c22, c22c, c23, c24]:
-            if conn.p.val >= 0.90 * p_crit_c1:
+            if conn.p.val >= 0.95 * p_crit_c1:
                 print(f"  SKIP: {fluid_cycle1} at {conn.label} reaches "
-                      f"{conn.p.val:.1f} bar >= 90% of p_crit "
+                      f"{conn.p.val:.1f} bar >= 95% of p_crit "
                       f"({p_crit_c1:.1f} bar)")
                 return None
 
@@ -540,6 +546,9 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
             "fluid_cycle1": fluid_cycle1,
             "fluid_cycle2": fluid_cycle2,
             "T_source_in": T_src_in_val,
+            "T_source_out": c13.T.val,
+            "m_source": c11.m.val,
+            "source_mode": source_mode,
             "sizing": {
                 "V_dot_comp1": V_dot_comp1,  # m³/h
                 "V_dot_comp2": V_dot_comp2,  # m³/h

@@ -19,8 +19,6 @@ import os
 import numpy as np
 
 from config import (
-    ALT_E1_C,
-    ALT_FULL_LOAD_HOURS,
     ANALYSIS_JSON_FILE,
     BASE_E1_C,
     BASE_FULL_LOAD_HOURS,
@@ -28,11 +26,12 @@ from config import (
     E1_C_RANGE,
     FLUIDS_C1,
     FLUIDS_C2,
-    FULL_LOAD_HOURS_RANGE,
     LIFT_SHARE_DEFAULT,
     LIFT_SHARE_RANGE,
     NumpyEncoder,
     RESULTS_DIR,
+    SOURCE_MASS_FLOW,
+    SOURCE_MASS_FLOW_RANGE,
     T_SOURCE_IN_DEFAULT,
     T_SOURCE_IN_RANGE,
     lift_share_to_T34,
@@ -56,38 +55,6 @@ def _scenario_folder(f1, f2, ls, T_source_in):
     return (f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{T_source_in}")
 
 
-def _eco_result(sim, hours, e1c):
-    """
-    Run ``run_economics`` and merge thermodynamic + economic results.
-
-    Parameters
-    ----------
-    sim : dict
-        Output of ``simulate_hthp``.
-    hours : float
-        Full-load hours [h/a].
-    e1c : float
-        Electricity price [ct/kWh].
-
-    Returns
-    -------
-    dict or None
-        Combined result dict, or ``None`` if economics failed.
-    """
-    eco = run_economics(sim, hours, e1c)
-    if eco is None:
-        return None
-    return {
-        "c_P": eco["c_P"],
-        "Z_sum": eco["Z_sum"],
-        "COP": sim["COP"],
-        "epsilon": sim["epsilon"],
-        "E_F": sim["E_F"],
-        "E_P": sim["E_P"],
-        "E_D": sim["E_D"],
-    }
-
-
 # ── Main analysis routine ───────────────────────────────────────────────────
 
 def run_all_analysis(simulations):
@@ -102,21 +69,10 @@ def run_all_analysis(simulations):
     Returns
     -------
     dict
-        Keys:
-
-        - **heater_ref** — base-case heater economics.
-        - **base_results** — ``{(f1, f2): result_dict | None}``.
-        - **valid_combos** — list of feasible ``(f1, f2)`` tuples.
-        - **sensitivity_hours / _e1c / _hours_alt / _e1c_alt** — sweep data.
-        - **heater_sens_hours / _e1c / _hours_alt / _e1c_alt** — heater sweeps.
-        - **sensitivity_lift_share** — ``{(f1, f2, ls): result_dict | None}``.
-        - **valid_combos_lift_share** — ``{ls: [(f1, f2), ...]}``.
-        - **sensitivity_hours_by_lift_share / _e1c_by_lift_share** — per-LS sweeps.
-        - **sensitivity_T_source_in** — ``{(f1, f2, T_source_in): result_dict | None}``.
-        - **valid_combos_T_source_in** — ``{T_source_in: [(f1, f2), ...]}``.
-        - **sensitivity_hours_by_T_source_in / _e1c_by_T_source_in** — per-T_source_in sweeps.
+        Analysis results for both source modes.
     """
     hthp = simulations["hthp"]
+    hthp_fm = simulations.get("hthp_fm", {})
     heater_sim = simulations["heater"]
     gas_heater_sim = simulations["gas_heater"]
 
@@ -148,6 +104,13 @@ def run_all_analysis(simulations):
     print(f"  Gas Heater (ref): COP={gas_heater_ref['COP']:.3f}  "
           f"epsilon={gas_heater_ref['epsilon']:.4f}  c_P={gas_heater_ref['c_P']:.2f}")
 
+    # ── Heater sensitivity: c_P vs electricity price ─────────────────────
+    heater_sens_e1c = []
+    gas_heater_sens_e1c_val = run_economics_gas_heater(gas_heater_sim, BASE_FULL_LOAD_HOURS, BASE_GAS_C)["c_P"]
+    gas_heater_sens_e1c = [gas_heater_sens_e1c_val] * len(E1_C_RANGE)
+    for e1c in E1_C_RANGE:
+        heater_sens_e1c.append(run_economics_heater(heater_sim, BASE_FULL_LOAD_HOURS, e1c)["c_P"])
+
     # ── Base-case results (default lift share, default T_source_in) ───────
     base_results = {}
     for f1 in FLUIDS_C1:
@@ -178,52 +141,13 @@ def run_all_analysis(simulations):
         if hthp.get((f1, f2, LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT)) is not None
     ]
 
-    # ── Sensitivity 1: c_P vs full-load hours (base e1c) ────────────────
-    print("  Sensitivity: c_P vs full-load hours ...")
-    sens_hours = {k: [] for k in valid_combos}
-    heater_sens_hours = []
-    gas_heater_sens_hours = []
-    for hours in FULL_LOAD_HOURS_RANGE:
-        for key in valid_combos:
-            eco = run_economics(hthp[(key[0], key[1], LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT)], hours, BASE_E1_C)
-            sens_hours[key].append(eco["c_P"] if eco else np.nan)
-        heater_sens_hours.append(run_economics_heater(heater_sim, hours, BASE_E1_C)["c_P"])
-        gas_heater_sens_hours.append(run_economics_gas_heater(gas_heater_sim, hours, BASE_GAS_C)["c_P"])
-
-    # ── Sensitivity 2: c_P vs electricity price (base hours) ────────────
+    # ── Sensitivity: c_P vs electricity price (base hours, fixed) ────────
     print("  Sensitivity: c_P vs electricity price ...")
     sens_e1c = {k: [] for k in valid_combos}
-    heater_sens_e1c = []
-    gas_heater_sens_e1c_val = run_economics_gas_heater(gas_heater_sim, BASE_FULL_LOAD_HOURS, BASE_GAS_C)["c_P"]
-    gas_heater_sens_e1c = [gas_heater_sens_e1c_val] * len(E1_C_RANGE)
     for e1c in E1_C_RANGE:
         for key in valid_combos:
             eco = run_economics(hthp[(key[0], key[1], LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT)], BASE_FULL_LOAD_HOURS, e1c)
             sens_e1c[key].append(eco["c_P"] if eco else np.nan)
-        heater_sens_e1c.append(run_economics_heater(heater_sim, BASE_FULL_LOAD_HOURS, e1c)["c_P"])
-
-    # ── Sensitivity 3: high electricity price ────────────────────────────
-    print("  Sensitivity: c_P vs full-load hours (high e1c) ...")
-    sens_hours_alt = {k: [] for k in valid_combos}
-    heater_sens_hours_alt = []
-    gas_heater_sens_hours_alt = gas_heater_sens_hours  # gas heater independent of e1c
-    for hours in FULL_LOAD_HOURS_RANGE:
-        for key in valid_combos:
-            eco = run_economics(hthp[(key[0], key[1], LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT)], hours, ALT_E1_C)
-            sens_hours_alt[key].append(eco["c_P"] if eco else np.nan)
-        heater_sens_hours_alt.append(run_economics_heater(heater_sim, hours, ALT_E1_C)["c_P"])
-
-    # ── Sensitivity 4: high utilisation ──────────────────────────────────
-    print("  Sensitivity: c_P vs electricity price (high util) ...")
-    sens_e1c_alt = {k: [] for k in valid_combos}
-    heater_sens_e1c_alt = []
-    gas_heater_sens_e1c_alt_val = run_economics_gas_heater(gas_heater_sim, ALT_FULL_LOAD_HOURS, BASE_GAS_C)["c_P"]
-    gas_heater_sens_e1c_alt = [gas_heater_sens_e1c_alt_val] * len(E1_C_RANGE)
-    for e1c in E1_C_RANGE:
-        for key in valid_combos:
-            eco = run_economics(hthp[(key[0], key[1], LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT)], ALT_FULL_LOAD_HOURS, e1c)
-            sens_e1c_alt[key].append(eco["c_P"] if eco else np.nan)
-        heater_sens_e1c_alt.append(run_economics_heater(heater_sim, ALT_FULL_LOAD_HOURS, e1c)["c_P"])
 
     # ── Lift share sensitivity (at default T_source_in) ───────────────────
     print("  Lift share sensitivity ...")
@@ -263,18 +187,9 @@ def run_all_analysis(simulations):
                 and not np.isnan(sens_lift_share[(f1, f2, ls)].get("c_P", np.nan)))
         ]
 
-    sens_hours_by_lift_share = {}
     sens_e1c_by_lift_share = {}
     for ls in LIFT_SHARE_RANGE:
         combos = valid_combos_lift_share[ls]
-        # hours sweep
-        hours_data = {k: [] for k in combos}
-        for hours in FULL_LOAD_HOURS_RANGE:
-            for key in combos:
-                eco = run_economics(hthp[(key[0], key[1], ls, T_SOURCE_IN_DEFAULT)], hours, BASE_E1_C)
-                hours_data[key].append(eco["c_P"] if eco else np.nan)
-        sens_hours_by_lift_share[ls] = hours_data
-        # e1c sweep
         e1c_data = {k: [] for k in combos}
         for e1c in E1_C_RANGE:
             for key in combos:
@@ -320,18 +235,9 @@ def run_all_analysis(simulations):
                 and not np.isnan(sens_T_source_in[(f1, f2, T_src_val)].get("c_P", np.nan)))
         ]
 
-    sens_hours_by_T_source_in = {}
     sens_e1c_by_T_source_in = {}
     for T_src_val in T_SOURCE_IN_RANGE:
         combos = valid_combos_T_source_in[T_src_val]
-        # hours sweep
-        hours_data = {k: [] for k in combos}
-        for hours in FULL_LOAD_HOURS_RANGE:
-            for key in combos:
-                eco = run_economics(hthp[(key[0], key[1], LIFT_SHARE_DEFAULT, T_src_val)], hours, BASE_E1_C)
-                hours_data[key].append(eco["c_P"] if eco else np.nan)
-        sens_hours_by_T_source_in[T_src_val] = hours_data
-        # e1c sweep
         e1c_data = {k: [] for k in combos}
         for e1c in E1_C_RANGE:
             for key in combos:
@@ -361,33 +267,149 @@ def run_all_analysis(simulations):
                     }
         sens_T_source_in_by_lift_share[ls] = ls_data
 
+    # ── Fixed mass flow mode ─────────────────────────────────────────────
+    # hthp_fm is nested: {m_val: {(f1, f2, ls, T_src): sim, ...}}
+    # Use SOURCE_MASS_FLOW (40 kg/s) as the base case.
+    hthp_fm_base = hthp_fm.get(SOURCE_MASS_FLOW, {})
+
+    # ── Fixed mass flow: T_source_in sensitivity (base mass flow) ──────
+    print("  Fixed mass flow: T_source_in sensitivity ...")
+    sens_T_source_in_fm = {}
+    if hthp_fm_base:
+        for T_src_val in T_SOURCE_IN_RANGE:
+            T34 = lift_share_to_T34(LIFT_SHARE_DEFAULT, T_src_val)
+            for f1 in FLUIDS_C1:
+                for f2 in FLUIDS_C2:
+                    sim = hthp_fm_base.get((f1, f2, LIFT_SHARE_DEFAULT, T_src_val))
+                    if sim is None:
+                        sens_T_source_in_fm[(f1, f2, T_src_val)] = None
+                        continue
+                    eco = run_economics(sim, BASE_FULL_LOAD_HOURS, BASE_E1_C)
+                    sens_T_source_in_fm[(f1, f2, T_src_val)] = {
+                        "COP": sim["COP"],
+                        "epsilon": sim["epsilon"],
+                        "c_P": eco["c_P"] if eco else np.nan,
+                        "T34": T34,
+                        "T_source_out": sim.get("T_source_out"),
+                        "m_source": sim.get("m_source"),
+                    }
+
+    valid_combos_T_source_in_fm = {}
+    for T_src_val in T_SOURCE_IN_RANGE:
+        valid_combos_T_source_in_fm[T_src_val] = [
+            (f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2
+            if (sens_T_source_in_fm.get((f1, f2, T_src_val)) is not None
+                and not np.isnan(sens_T_source_in_fm[(f1, f2, T_src_val)].get("c_P", np.nan)))
+        ]
+
+    # ── Fixed mass flow: e1c sensitivity (base mass flow) ─────────────
+    print("  Fixed mass flow: e1c sweeps ...")
+    sens_e1c_by_T_source_in_fm = {}
+    if hthp_fm_base:
+        for T_src_val in T_SOURCE_IN_RANGE:
+            combos = valid_combos_T_source_in_fm[T_src_val]
+            e1c_data = {k: [] for k in combos}
+            for e1c in E1_C_RANGE:
+                for key in combos:
+                    eco = run_economics(hthp_fm_base[(key[0], key[1], LIFT_SHARE_DEFAULT, T_src_val)], BASE_FULL_LOAD_HOURS, e1c)
+                    e1c_data[key].append(eco["c_P"] if eco else np.nan)
+            sens_e1c_by_T_source_in_fm[T_src_val] = e1c_data
+
+    # ── Fixed mass flow: base-case results (base mass flow) ───────────
+    base_results_fm = {}
+    if hthp_fm_base:
+        for f1 in FLUIDS_C1:
+            for f2 in FLUIDS_C2:
+                sim = hthp_fm_base.get((f1, f2, LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT))
+                if sim is None:
+                    base_results_fm[(f1, f2)] = None
+                    continue
+                eco = run_economics(sim, BASE_FULL_LOAD_HOURS, BASE_E1_C)
+                if eco is None:
+                    base_results_fm[(f1, f2)] = None
+                    continue
+                base_results_fm[(f1, f2)] = {
+                    "c_P": eco["c_P"],
+                    "Z_sum": eco["Z_sum"],
+                    "COP": sim["COP"],
+                    "epsilon": sim["epsilon"],
+                    "E_F": sim["E_F"],
+                    "E_P": sim["E_P"],
+                    "E_D": sim["E_D"],
+                    "T_source_out": sim.get("T_source_out"),
+                    "m_source": sim.get("m_source"),
+                }
+
+    # ── Fixed mass flow: lift share sensitivity (base mass flow) ──────
+    print("  Fixed mass flow: lift share sensitivity ...")
+    sens_lift_share_fm = {}
+    if hthp_fm_base:
+        for ls in LIFT_SHARE_RANGE:
+            T34 = lift_share_to_T34(ls, T_SOURCE_IN_DEFAULT)
+            for f1 in FLUIDS_C1:
+                for f2 in FLUIDS_C2:
+                    sim = hthp_fm_base.get((f1, f2, ls, T_SOURCE_IN_DEFAULT))
+                    if sim is None:
+                        sens_lift_share_fm[(f1, f2, ls)] = None
+                        continue
+                    eco = run_economics(sim, BASE_FULL_LOAD_HOURS, BASE_E1_C)
+                    sens_lift_share_fm[(f1, f2, ls)] = {
+                        "COP": sim["COP"],
+                        "epsilon": sim["epsilon"],
+                        "c_P": eco["c_P"] if eco else np.nan,
+                        "T34": T34,
+                        "T_source_out": sim.get("T_source_out"),
+                        "m_source": sim.get("m_source"),
+                    }
+
+    # ── Mass flow sensitivity (across SOURCE_MASS_FLOW_RANGE) ─────────
+    print("  Mass flow sensitivity ...")
+    sens_mass_flow = {}
+    for m_val in SOURCE_MASS_FLOW_RANGE:
+        hthp_m = hthp_fm.get(m_val, {})
+        if not hthp_m:
+            continue
+        for T_src_val in T_SOURCE_IN_RANGE:
+            T34 = lift_share_to_T34(LIFT_SHARE_DEFAULT, T_src_val)
+            for f1 in FLUIDS_C1:
+                for f2 in FLUIDS_C2:
+                    sim = hthp_m.get((f1, f2, LIFT_SHARE_DEFAULT, T_src_val))
+                    if sim is None:
+                        sens_mass_flow[(f1, f2, T_src_val, m_val)] = None
+                        continue
+                    eco = run_economics(sim, BASE_FULL_LOAD_HOURS, BASE_E1_C)
+                    sens_mass_flow[(f1, f2, T_src_val, m_val)] = {
+                        "COP": sim["COP"],
+                        "epsilon": sim["epsilon"],
+                        "c_P": eco["c_P"] if eco else np.nan,
+                        "T34": T34,
+                        "T_source_out": sim.get("T_source_out"),
+                        "m_source": sim.get("m_source"),
+                    }
+
     # ── Pack everything ──────────────────────────────────────────────────
     return {
         "heater_ref": heater_ref,
         "gas_heater_ref": gas_heater_ref,
         "base_results": base_results,
         "valid_combos": valid_combos,
-        "sensitivity_hours": sens_hours,
         "sensitivity_e1c": sens_e1c,
-        "sensitivity_hours_alt": sens_hours_alt,
-        "sensitivity_e1c_alt": sens_e1c_alt,
-        "heater_sens_hours": heater_sens_hours,
         "heater_sens_e1c": heater_sens_e1c,
-        "heater_sens_hours_alt": heater_sens_hours_alt,
-        "heater_sens_e1c_alt": heater_sens_e1c_alt,
-        "gas_heater_sens_hours": gas_heater_sens_hours,
         "gas_heater_sens_e1c": gas_heater_sens_e1c,
-        "gas_heater_sens_hours_alt": gas_heater_sens_hours_alt,
-        "gas_heater_sens_e1c_alt": gas_heater_sens_e1c_alt,
         "sensitivity_lift_share": sens_lift_share,
         "valid_combos_lift_share": valid_combos_lift_share,
-        "sensitivity_hours_by_lift_share": sens_hours_by_lift_share,
         "sensitivity_e1c_by_lift_share": sens_e1c_by_lift_share,
         "sensitivity_T_source_in": sens_T_source_in,
         "valid_combos_T_source_in": valid_combos_T_source_in,
-        "sensitivity_hours_by_T_source_in": sens_hours_by_T_source_in,
         "sensitivity_e1c_by_T_source_in": sens_e1c_by_T_source_in,
         "sensitivity_T_source_in_by_lift_share": sens_T_source_in_by_lift_share,
+        # Fixed mass flow mode
+        "base_results_fm": base_results_fm,
+        "sensitivity_T_source_in_fm": sens_T_source_in_fm,
+        "valid_combos_T_source_in_fm": valid_combos_T_source_in_fm,
+        "sensitivity_e1c_by_T_source_in_fm": sens_e1c_by_T_source_in_fm,
+        "sensitivity_lift_share_fm": sens_lift_share_fm,
+        "sensitivity_mass_flow": sens_mass_flow,
     }
 
 
@@ -425,6 +447,17 @@ def _decode_dict_triple_keys(d):
     return {_decode_triple_key(k): v for k, v in d.items()}
 
 
+def _decode_quad_key(s):
+    """Decode a ``"f1|f2|T_src|m"`` string back to a 4-tuple of (str, str, float, float)."""
+    parts = s.split("|")
+    return (parts[0], parts[1], float(parts[2]), float(parts[3]))
+
+
+def _decode_dict_quad_keys(d):
+    """Convert a dict with ``"f1|f2|val1|val2"`` string keys back to tuple keys."""
+    return {_decode_quad_key(k): v for k, v in d.items()}
+
+
 def _decode_list_of_pairs(lst):
     """Decode a list of ``["f1", "f2"]`` lists back to tuples."""
     return [(x[0], x[1]) for x in lst]
@@ -435,50 +468,30 @@ def _decode_list_of_pairs(lst):
 def save_analysis(data):
     """
     Serialise analysis results to a JSON file.
-
-    Tuple keys are encoded as pipe-separated strings.
-
-    Parameters
-    ----------
-    data : dict
-        Output of ``run_all_analysis``.
     """
     out = {}
 
     # Scalars / simple dicts
     out["heater_ref"] = data["heater_ref"]
-    out["heater_sens_hours"] = data["heater_sens_hours"]
     out["heater_sens_e1c"] = data["heater_sens_e1c"]
-    out["heater_sens_hours_alt"] = data["heater_sens_hours_alt"]
-    out["heater_sens_e1c_alt"] = data["heater_sens_e1c_alt"]
     out["gas_heater_ref"] = data["gas_heater_ref"]
-    out["gas_heater_sens_hours"] = data["gas_heater_sens_hours"]
     out["gas_heater_sens_e1c"] = data["gas_heater_sens_e1c"]
-    out["gas_heater_sens_hours_alt"] = data["gas_heater_sens_hours_alt"]
-    out["gas_heater_sens_e1c_alt"] = data["gas_heater_sens_e1c_alt"]
 
     # (f1, f2) keyed dicts
     out["base_results"] = _encode_dict_keys(data["base_results"])
     out["valid_combos"] = [list(c) for c in data["valid_combos"]]
-    out["sensitivity_hours"] = _encode_dict_keys(data["sensitivity_hours"])
     out["sensitivity_e1c"] = _encode_dict_keys(data["sensitivity_e1c"])
-    out["sensitivity_hours_alt"] = _encode_dict_keys(data["sensitivity_hours_alt"])
-    out["sensitivity_e1c_alt"] = _encode_dict_keys(data["sensitivity_e1c_alt"])
 
     # (f1, f2, ls) keyed dicts
     out["sensitivity_lift_share"] = _encode_dict_keys(data["sensitivity_lift_share"])
 
-    # {ls: [(f1,f2), ...]} → {ls_str: [[f1,f2], ...]}
+    # {ls: [(f1,f2), ...]}
     out["valid_combos_lift_share"] = {
         str(ls): [list(c) for c in combos]
         for ls, combos in data["valid_combos_lift_share"].items()
     }
 
-    # {ls: {(f1,f2): [...]}} → {ls_str: {"f1|f2": [...]}}
-    out["sensitivity_hours_by_lift_share"] = {
-        str(ls): _encode_dict_keys(inner)
-        for ls, inner in data["sensitivity_hours_by_lift_share"].items()
-    }
+    # {ls: {(f1,f2): [...]}}
     out["sensitivity_e1c_by_lift_share"] = {
         str(ls): _encode_dict_keys(inner)
         for ls, inner in data["sensitivity_e1c_by_lift_share"].items()
@@ -492,20 +505,30 @@ def save_analysis(data):
         str(T): [list(c) for c in combos]
         for T, combos in data["valid_combos_T_source_in"].items()
     }
-    out["sensitivity_hours_by_T_source_in"] = {
-        str(T): _encode_dict_keys(inner)
-        for T, inner in data["sensitivity_hours_by_T_source_in"].items()
-    }
     out["sensitivity_e1c_by_T_source_in"] = {
         str(T): _encode_dict_keys(inner)
         for T, inner in data["sensitivity_e1c_by_T_source_in"].items()
     }
 
-    # {ls: {(f1, f2, T_src): result}} → {ls_str: {"f1|f2|T_src": result}}
+    # {ls: {(f1, f2, T_src): result}}
     out["sensitivity_T_source_in_by_lift_share"] = {
         str(ls): _encode_dict_keys(inner)
         for ls, inner in data["sensitivity_T_source_in_by_lift_share"].items()
     }
+
+    # Fixed mass flow mode
+    out["base_results_fm"] = _encode_dict_keys(data["base_results_fm"])
+    out["sensitivity_T_source_in_fm"] = _encode_dict_keys(data["sensitivity_T_source_in_fm"])
+    out["valid_combos_T_source_in_fm"] = {
+        str(T): [list(c) for c in combos]
+        for T, combos in data["valid_combos_T_source_in_fm"].items()
+    }
+    out["sensitivity_e1c_by_T_source_in_fm"] = {
+        str(T): _encode_dict_keys(inner)
+        for T, inner in data["sensitivity_e1c_by_T_source_in_fm"].items()
+    }
+    out["sensitivity_lift_share_fm"] = _encode_dict_keys(data["sensitivity_lift_share_fm"])
+    out["sensitivity_mass_flow"] = _encode_dict_keys(data["sensitivity_mass_flow"])
 
     os.makedirs(os.path.dirname(ANALYSIS_JSON_FILE), exist_ok=True)
     with open(ANALYSIS_JSON_FILE, "w") as f:
@@ -516,43 +539,25 @@ def save_analysis(data):
 def load_analysis():
     """
     Load cached analysis results from a JSON file.
-
-    Returns
-    -------
-    dict
-        Same structure as the output of ``run_all_analysis``.
     """
     with open(ANALYSIS_JSON_FILE) as f:
         raw = json.load(f)
 
     data = {}
     data["heater_ref"] = raw["heater_ref"]
-    data["heater_sens_hours"] = raw["heater_sens_hours"]
     data["heater_sens_e1c"] = raw["heater_sens_e1c"]
-    data["heater_sens_hours_alt"] = raw["heater_sens_hours_alt"]
-    data["heater_sens_e1c_alt"] = raw["heater_sens_e1c_alt"]
     data["gas_heater_ref"] = raw["gas_heater_ref"]
-    data["gas_heater_sens_hours"] = raw["gas_heater_sens_hours"]
     data["gas_heater_sens_e1c"] = raw["gas_heater_sens_e1c"]
-    data["gas_heater_sens_hours_alt"] = raw["gas_heater_sens_hours_alt"]
-    data["gas_heater_sens_e1c_alt"] = raw["gas_heater_sens_e1c_alt"]
 
     data["base_results"] = _decode_dict_pair_keys(raw["base_results"])
     data["valid_combos"] = _decode_list_of_pairs(raw["valid_combos"])
-    data["sensitivity_hours"] = _decode_dict_pair_keys(raw["sensitivity_hours"])
     data["sensitivity_e1c"] = _decode_dict_pair_keys(raw["sensitivity_e1c"])
-    data["sensitivity_hours_alt"] = _decode_dict_pair_keys(raw["sensitivity_hours_alt"])
-    data["sensitivity_e1c_alt"] = _decode_dict_pair_keys(raw["sensitivity_e1c_alt"])
 
     data["sensitivity_lift_share"] = _decode_dict_triple_keys(raw["sensitivity_lift_share"])
 
     data["valid_combos_lift_share"] = {
         float(ls): _decode_list_of_pairs(combos)
         for ls, combos in raw["valid_combos_lift_share"].items()
-    }
-    data["sensitivity_hours_by_lift_share"] = {
-        float(ls): _decode_dict_pair_keys(inner)
-        for ls, inner in raw["sensitivity_hours_by_lift_share"].items()
     }
     data["sensitivity_e1c_by_lift_share"] = {
         float(ls): _decode_dict_pair_keys(inner)
@@ -564,10 +569,6 @@ def load_analysis():
         float(T): _decode_list_of_pairs(combos)
         for T, combos in raw["valid_combos_T_source_in"].items()
     }
-    data["sensitivity_hours_by_T_source_in"] = {
-        float(T): _decode_dict_pair_keys(inner)
-        for T, inner in raw["sensitivity_hours_by_T_source_in"].items()
-    }
     data["sensitivity_e1c_by_T_source_in"] = {
         float(T): _decode_dict_pair_keys(inner)
         for T, inner in raw["sensitivity_e1c_by_T_source_in"].items()
@@ -577,6 +578,20 @@ def load_analysis():
         float(ls): _decode_dict_triple_keys(inner)
         for ls, inner in raw["sensitivity_T_source_in_by_lift_share"].items()
     }
+
+    # Fixed mass flow mode
+    data["base_results_fm"] = _decode_dict_pair_keys(raw.get("base_results_fm", {}))
+    data["sensitivity_T_source_in_fm"] = _decode_dict_triple_keys(raw.get("sensitivity_T_source_in_fm", {}))
+    data["valid_combos_T_source_in_fm"] = {
+        float(T): _decode_list_of_pairs(combos)
+        for T, combos in raw.get("valid_combos_T_source_in_fm", {}).items()
+    }
+    data["sensitivity_e1c_by_T_source_in_fm"] = {
+        float(T): _decode_dict_pair_keys(inner)
+        for T, inner in raw.get("sensitivity_e1c_by_T_source_in_fm", {}).items()
+    }
+    data["sensitivity_lift_share_fm"] = _decode_dict_triple_keys(raw.get("sensitivity_lift_share_fm", {}))
+    data["sensitivity_mass_flow"] = _decode_dict_quad_keys(raw.get("sensitivity_mass_flow", {}))
 
     print(f"Analysis loaded <- {ANALYSIS_JSON_FILE}")
     return data

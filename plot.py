@@ -21,17 +21,17 @@ from fluprodia import FluidPropertyDiagram
 
 from analyze import load_analysis
 from config import (
-    ALT_E1_C,
-    ALT_FULL_LOAD_HOURS,
     BASE_E1_C,
     BASE_FULL_LOAD_HOURS,
     E1_C_RANGE,
     FLUIDS_C1,
     FLUIDS_C2,
-    FULL_LOAD_HOURS_RANGE,
     LIFT_SHARE_DEFAULT,
     LIFT_SHARE_RANGE,
     RESULTS_DIR,
+    SOURCE_DELTA_T,
+    SOURCE_MASS_FLOW,
+    SOURCE_MASS_FLOW_RANGE,
     T_SOURCE_IN_DEFAULT,
     T_SOURCE_IN_RANGE,
     lift_share_to_T34,
@@ -79,14 +79,7 @@ def _valid_scenario_keys(analysis):
 # ── Results summary table ────────────────────────────────────────────────────
 
 def print_summary_table(analysis):
-    """
-    Print a formatted table of base-case results to stdout.
-
-    Parameters
-    ----------
-    analysis : dict
-        Output of ``run_all_analysis``.
-    """
+    """Print a formatted table of base-case results to stdout."""
     results = analysis["base_results"]
     heater = analysis["heater_ref"]
 
@@ -135,9 +128,35 @@ def print_summary_table(analysis):
 
     df = pd.DataFrame(rows)
     print("\n" + "=" * 80)
-    print("RESULTS SUMMARY")
+    print("RESULTS SUMMARY (fixed_delta_T mode)")
     print("=" * 80)
     print(df.to_string(index=False))
+
+    # Fixed mass flow summary
+    results_fm = analysis.get("base_results_fm", {})
+    if results_fm:
+        rows_fm = []
+        for (f1, f2), res in results_fm.items():
+            row = {"Cycle 1": f1, "Cycle 2": f2}
+            if res is not None:
+                row.update({
+                    "COP [-]": round(res["COP"], 3),
+                    "epsilon [%]": round(res["epsilon"] * 100, 2),
+                    "c_P [EUR/GJ]": round(res["c_P"], 2),
+                    "T_src_out [°C]": round(res.get("T_source_out", 0), 1) if res.get("T_source_out") else "N/A",
+                    "m_src [kg/s]": round(res.get("m_source", 0), 3) if res.get("m_source") else "N/A",
+                })
+            else:
+                row.update({k: None for k in [
+                    "COP [-]", "epsilon [%]", "c_P [EUR/GJ]",
+                    "T_src_out [°C]", "m_src [kg/s]",
+                ]})
+            rows_fm.append(row)
+        df_fm = pd.DataFrame(rows_fm)
+        print("\n" + "=" * 80)
+        print(f"RESULTS SUMMARY (fixed_mass_flow mode, m={SOURCE_MASS_FLOW} kg/s)")
+        print("=" * 80)
+        print(df_fm.to_string(index=False))
 
 
 # ── Figure 1: Grouped bar charts ─────────────────────────────────────────────
@@ -226,30 +245,11 @@ def plot_comparison_heatmaps(analysis):
     plt.close(fig)
 
 
-# ── Figures 3–6: Sensitivity line plots ──────────────────────────────────────
+# ── Sensitivity line plots ───────────────────────────────────────────────────
 
 def _sensitivity_line_plot(x_range, data, heater_data, combos, xlabel, ylabel, title, path,
                            gas_heater_data=None):
-    """
-    Generic line plot for a 1-D sensitivity sweep.
-
-    Parameters
-    ----------
-    x_range : array-like
-        Swept parameter values (x-axis).
-    data : dict
-        ``{(f1, f2): [y_values, ...]}``.
-    heater_data : list of float
-        Heater reference y-values (same length as *x_range*).
-    combos : list of tuple
-        ``(f1, f2)`` keys to plot.
-    xlabel, ylabel, title : str
-        Axis / title labels (may contain LaTeX).
-    path : str
-        Output file path.
-    gas_heater_data : list of float, optional
-        Gas heater reference y-values (same length as *x_range*).
-    """
+    """Generic line plot for a 1-D sensitivity sweep."""
     combo_colors = plt.cm.tab10(np.linspace(0, 1, len(combos)))
     fig, ax = plt.subplots(figsize=(10, 6))
     for i, key in enumerate(combos):
@@ -268,21 +268,6 @@ def _sensitivity_line_plot(x_range, data, heater_data, combos, xlabel, ylabel, t
     plt.close(fig)
 
 
-def plot_sensitivity_hours(analysis):
-    """c_P vs full-load hours at base electricity price."""
-    _sensitivity_line_plot(
-        FULL_LOAD_HOURS_RANGE,
-        analysis["sensitivity_hours"],
-        analysis["heater_sens_hours"],
-        analysis["valid_combos"],
-        "Full load hours [h/a]",
-        "$c_P$ [EUR/GJ]",
-        f"Sensitivity: $c_P$ vs. full load hours (at $c_{{e1}}$ = {BASE_E1_C:.0f} ct/kWh)",
-        _out_path("overview", "sensitivity_hours.png"),
-        gas_heater_data=analysis["gas_heater_sens_hours"],
-    )
-
-
 def plot_sensitivity_e1c(analysis):
     """c_P vs electricity price at base full-load hours."""
     _sensitivity_line_plot(
@@ -298,39 +283,7 @@ def plot_sensitivity_e1c(analysis):
     )
 
 
-def plot_sensitivity_hours_alt(analysis):
-    """c_P vs full-load hours at high electricity price."""
-    _sensitivity_line_plot(
-        FULL_LOAD_HOURS_RANGE,
-        analysis["sensitivity_hours_alt"],
-        analysis["heater_sens_hours_alt"],
-        analysis["valid_combos"],
-        "Full load hours [h/a]",
-        "$c_P$ [EUR/GJ]",
-        f"High electricity price scenario: $c_P$ vs. full load hours "
-        f"(at $c_{{e1}}$ = {ALT_E1_C:.0f} ct/kWh)",
-        _out_path("overview", "sensitivity_hours_high_price.png"),
-        gas_heater_data=analysis["gas_heater_sens_hours_alt"],
-    )
-
-
-def plot_sensitivity_e1c_alt(analysis):
-    """c_P vs electricity price at high utilisation."""
-    _sensitivity_line_plot(
-        E1_C_RANGE,
-        analysis["sensitivity_e1c_alt"],
-        analysis["heater_sens_e1c_alt"],
-        analysis["valid_combos"],
-        "Electricity price $c_{e1}$ [ct/kWh]",
-        "$c_P$ [EUR/GJ]",
-        f"High utilization scenario: $c_P$ vs. electricity price "
-        f"(at {ALT_FULL_LOAD_HOURS} h/a)",
-        _out_path("overview", "sensitivity_e1c_high_util.png"),
-        gas_heater_data=analysis["gas_heater_sens_e1c_alt"],
-    )
-
-
-# ── Figures 7–9: Lift share sensitivity line plots ───────────────────────────
+# ── Lift share sensitivity line plots ────────────────────────────────────────
 
 def plot_sensitivity_lift_share_COP(analysis):
     """COP vs lift share for all valid fluid combinations."""
@@ -403,7 +356,7 @@ def plot_sensitivity_lift_share_epsilon(analysis):
     plt.close(fig)
 
 
-# ── Figure 10: Lift share heatmap ────────────────────────────────────────────
+# ── Lift share heatmap ──────────────────────────────────────────────────────
 
 def plot_sensitivity_lift_share_heatmap(analysis):
     """Heatmap of COP, epsilon and c_P across all combos and lift share values."""
@@ -457,47 +410,7 @@ def plot_sensitivity_lift_share_heatmap(analysis):
     plt.close(fig)
 
 
-# ── Figures 11–12: Economic sensitivities by lift share ──────────────────────
-
-def plot_sensitivity_hours_by_lift_share(analysis):
-    """c_P vs full-load hours — one subplot per lift share value."""
-    sens = analysis["sensitivity_hours_by_lift_share"]
-    heater = analysis["heater_sens_hours"]
-    gas_heater = analysis["gas_heater_sens_hours"]
-    all_possible = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
-    color_map = {c: plt.cm.tab10(i / len(all_possible)) for i, c in enumerate(all_possible)}
-
-    n_vals = len(LIFT_SHARE_RANGE)
-    ncols = 3
-    nrows = (n_vals + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows))
-    fig.suptitle(f"$c_P$ vs. full load hours — by lift share (at {BASE_E1_C:.0f} ct/kWh)",
-                 fontsize=14, fontweight="bold")
-
-    axes_flat = axes.flat
-    for idx, ls in enumerate(LIFT_SHARE_RANGE):
-        ax = axes_flat[idx]
-        combos = analysis["valid_combos_lift_share"][ls]
-        for f1, f2 in combos:
-            ax.plot(FULL_LOAD_HOURS_RANGE, sens[ls][(f1, f2)],
-                    marker="o", markersize=3, color=color_map[(f1, f2)], label=f"{f1}/{f2}")
-        ax.plot(FULL_LOAD_HOURS_RANGE, heater,
-                linestyle="--", linewidth=2, color="red", label="El. heater (ref)")
-        ax.plot(FULL_LOAD_HOURS_RANGE, gas_heater,
-                linestyle="--", linewidth=2, color="green", label="Gas heater (ref)")
-        ax.set_xlabel("Full load hours [h/a]")
-        ax.set_ylabel("$c_P$ [EUR/GJ]")
-        ax.set_title(f"LS = {ls_label(ls)}%")
-        ax.legend(fontsize=6, ncol=2)
-        ax.grid(alpha=0.3)
-
-    for idx in range(n_vals, nrows * ncols):
-        axes_flat[idx].set_visible(False)
-
-    fig.tight_layout()
-    fig.savefig(_out_path("overview", "sensitivity_hours_by_lift_share.png"), dpi=150, bbox_inches="tight")
-    plt.close(fig)
-
+# ── Economic sensitivities by lift share ─────────────────────────────────────
 
 def plot_sensitivity_e1c_by_lift_share(analysis):
     """c_P vs electricity price — one subplot per lift share value."""
@@ -539,7 +452,7 @@ def plot_sensitivity_e1c_by_lift_share(analysis):
     plt.close(fig)
 
 
-# ── Figures 13–15: T_source_in sensitivity line plots ─────────────────────────
+# ── T_source_in sensitivity line plots ───────────────────────────────────────
 
 def plot_sensitivity_T_source_in_COP(analysis):
     """COP vs T_source_in for all valid fluid combinations."""
@@ -556,7 +469,8 @@ def plot_sensitivity_T_source_in_COP(analysis):
     ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
     ax.set_ylabel("COP [-]")
     ax.set_title(f"Sensitivity: COP vs. $T_{{\\mathrm{{source,in}}}}$ "
-                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%)")
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%, "
+                 f"$\\Delta T_{{src}}$ = {SOURCE_DELTA_T} K)")
     ax.legend(title="Cycle 1 / Cycle 2", fontsize=8)
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -615,7 +529,7 @@ def plot_sensitivity_T_source_in_epsilon(analysis):
     plt.close(fig)
 
 
-# ── Figure 16: T_source_in heatmap ───────────────────────────────────────────
+# ── T_source_in heatmap ─────────────────────────────────────────────────────
 
 def plot_sensitivity_T_source_in_heatmap(analysis):
     """Heatmap of COP, epsilon and c_P across all combos and T_source_in values."""
@@ -631,7 +545,8 @@ def plot_sensitivity_T_source_in_heatmap(analysis):
 
     fig, axes = plt.subplots(1, 3, figsize=(20, 6))
     fig.suptitle(f"Sensitivity: $T_{{\\mathrm{{source,in}}}}$ — all fluid combinations "
-                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%)",
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%, "
+                 f"$\\Delta T_{{src}}$ = {SOURCE_DELTA_T} K)",
                  fontsize=14, fontweight="bold")
 
     for ax, (ylabel, key) in zip(axes, heatmap_metrics.items()):
@@ -729,48 +644,7 @@ def plot_sensitivity_T_source_in_heatmap_by_lift_share(analysis):
         plt.close(fig)
 
 
-# ── Figures 17–18: Economic sensitivities by T_source_in ─────────────────────
-
-def plot_sensitivity_hours_by_T_source_in(analysis):
-    """c_P vs full-load hours — one subplot per T_source_in value."""
-    sens = analysis["sensitivity_hours_by_T_source_in"]
-    heater = analysis["heater_sens_hours"]
-    gas_heater = analysis["gas_heater_sens_hours"]
-    all_possible = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
-    color_map = {c: plt.cm.tab10(i / len(all_possible)) for i, c in enumerate(all_possible)}
-
-    n_vals = len(T_SOURCE_IN_RANGE)
-    ncols = 3
-    nrows = (n_vals + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows))
-    fig.suptitle(f"$c_P$ vs. full load hours — by $T_{{\\mathrm{{source,in}}}}$ "
-                 f"(at {BASE_E1_C:.0f} ct/kWh, LS = {ls_label(LIFT_SHARE_DEFAULT)}%)",
-                 fontsize=14, fontweight="bold")
-
-    axes_flat = axes.flat
-    for idx, T_src_val in enumerate(T_SOURCE_IN_RANGE):
-        ax = axes_flat[idx]
-        combos = analysis["valid_combos_T_source_in"][T_src_val]
-        for f1, f2 in combos:
-            ax.plot(FULL_LOAD_HOURS_RANGE, sens[T_src_val][(f1, f2)],
-                    marker="o", markersize=3, color=color_map[(f1, f2)], label=f"{f1}/{f2}")
-        ax.plot(FULL_LOAD_HOURS_RANGE, heater,
-                linestyle="--", linewidth=2, color="red", label="El. heater (ref)")
-        ax.plot(FULL_LOAD_HOURS_RANGE, gas_heater,
-                linestyle="--", linewidth=2, color="green", label="Gas heater (ref)")
-        ax.set_xlabel("Full load hours [h/a]")
-        ax.set_ylabel("$c_P$ [EUR/GJ]")
-        ax.set_title(f"$T_{{\\mathrm{{source,in}}}}$ = {T_src_val} °C")
-        ax.legend(fontsize=6, ncol=2)
-        ax.grid(alpha=0.3)
-
-    for idx in range(n_vals, nrows * ncols):
-        axes_flat[idx].set_visible(False)
-
-    fig.tight_layout()
-    fig.savefig(_out_path("overview", "sensitivity_hours_by_T_source_in.png"), dpi=150, bbox_inches="tight")
-    plt.close(fig)
-
+# ── Economic sensitivities by T_source_in ────────────────────────────────────
 
 def plot_sensitivity_e1c_by_T_source_in(analysis):
     """c_P vs electricity price — one subplot per T_source_in value."""
@@ -813,6 +687,328 @@ def plot_sensitivity_e1c_by_T_source_in(analysis):
     plt.close(fig)
 
 
+# ── Fixed mass flow mode plots ───────────────────────────────────────────────
+
+def plot_sensitivity_T_source_in_COP_fm(analysis):
+    """COP vs T_source_in for fixed_mass_flow mode."""
+    sens = analysis.get("sensitivity_T_source_in_fm", {})
+    if not sens:
+        return
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens.get((c[0], c[1], T)) is not None for T in T_SOURCE_IN_RANGE)]
+    if not valid:
+        return
+
+    combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for i, (f1, f2) in enumerate(valid):
+        vals = [sens.get((f1, f2, T))["COP"] if sens.get((f1, f2, T)) else np.nan
+                for T in T_SOURCE_IN_RANGE]
+        ax.plot(T_SOURCE_IN_RANGE, vals, marker="o", markersize=5,
+                color=combo_colors[i], label=f"{f1}/{f2}")
+    ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+    ax.set_ylabel("COP [-]")
+    ax.set_title(f"COP vs. $T_{{\\mathrm{{source,in}}}}$ — fixed mass flow "
+                 f"($\\dot{{m}}_{{src}}$ = {SOURCE_MASS_FLOW} kg/s, "
+                 f"LS = {ls_label(LIFT_SHARE_DEFAULT)}%)")
+    ax.legend(title="Cycle 1 / Cycle 2", fontsize=8)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "sensitivity_T_source_in_COP_fm.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_sensitivity_T_source_in_cP_fm(analysis):
+    """c_P vs T_source_in for fixed_mass_flow mode."""
+    sens = analysis.get("sensitivity_T_source_in_fm", {})
+    if not sens:
+        return
+
+    heater = analysis["heater_ref"]
+    gas_heater = analysis["gas_heater_ref"]
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens.get((c[0], c[1], T)) is not None for T in T_SOURCE_IN_RANGE)]
+    if not valid:
+        return
+
+    combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for i, (f1, f2) in enumerate(valid):
+        vals = [sens.get((f1, f2, T))["c_P"] if sens.get((f1, f2, T)) else np.nan
+                for T in T_SOURCE_IN_RANGE]
+        ax.plot(T_SOURCE_IN_RANGE, vals, marker="s", markersize=5,
+                color=combo_colors[i], label=f"{f1}/{f2}")
+    ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater (ref)")
+    ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater (ref)")
+    ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+    ax.set_ylabel("$c_P$ [EUR/GJ]")
+    ax.set_title(f"$c_P$ vs. $T_{{\\mathrm{{source,in}}}}$ — fixed mass flow "
+                 f"($\\dot{{m}}_{{src}}$ = {SOURCE_MASS_FLOW} kg/s, "
+                 f"{BASE_E1_C:.0f} ct/kWh, {BASE_FULL_LOAD_HOURS} h/a)")
+    ax.legend(title="Cycle 1 / Cycle 2", fontsize=8)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "sensitivity_T_source_in_cP_fm.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_sensitivity_T_source_in_epsilon_fm(analysis):
+    """Exergetic efficiency vs T_source_in for fixed_mass_flow mode."""
+    sens = analysis.get("sensitivity_T_source_in_fm", {})
+    if not sens:
+        return
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens.get((c[0], c[1], T)) is not None for T in T_SOURCE_IN_RANGE)]
+    if not valid:
+        return
+
+    combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for i, (f1, f2) in enumerate(valid):
+        vals = [sens.get((f1, f2, T))["epsilon"] * 100 if sens.get((f1, f2, T)) else np.nan
+                for T in T_SOURCE_IN_RANGE]
+        ax.plot(T_SOURCE_IN_RANGE, vals, marker="^", markersize=5,
+                color=combo_colors[i], label=f"{f1}/{f2}")
+    ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+    ax.set_ylabel("$\\varepsilon$ [%]")
+    ax.set_title(f"$\\varepsilon$ vs. $T_{{\\mathrm{{source,in}}}}$ — fixed mass flow "
+                 f"($\\dot{{m}}_{{src}}$ = {SOURCE_MASS_FLOW} kg/s)")
+    ax.legend(title="Cycle 1 / Cycle 2", fontsize=8)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "sensitivity_T_source_in_epsilon_fm.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_comparison_modes_COP(analysis):
+    """Side-by-side COP comparison: fixed_delta_T vs fixed_mass_flow."""
+    sens_dt = analysis["sensitivity_T_source_in"]
+    sens_fm = analysis.get("sensitivity_T_source_in_fm", {})
+    if not sens_fm:
+        return
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens_dt.get((c[0], c[1], T)) is not None for T in T_SOURCE_IN_RANGE)]
+    if not valid:
+        return
+
+    combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+    fig.suptitle(f"COP vs. $T_{{\\mathrm{{source,in}}}}$ — mode comparison "
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%)",
+                 fontsize=14, fontweight="bold")
+
+    for i, (f1, f2) in enumerate(valid):
+        vals_dt = [sens_dt.get((f1, f2, T))["COP"] if sens_dt.get((f1, f2, T)) else np.nan
+                   for T in T_SOURCE_IN_RANGE]
+        ax1.plot(T_SOURCE_IN_RANGE, vals_dt, marker="o", markersize=5,
+                 color=combo_colors[i], label=f"{f1}/{f2}")
+
+        vals_fm = [sens_fm.get((f1, f2, T))["COP"] if sens_fm.get((f1, f2, T)) else np.nan
+                   for T in T_SOURCE_IN_RANGE]
+        ax2.plot(T_SOURCE_IN_RANGE, vals_fm, marker="o", markersize=5,
+                 color=combo_colors[i], label=f"{f1}/{f2}")
+
+    for ax, title in [(ax1, f"fixed $\\Delta T$ = {SOURCE_DELTA_T} K"),
+                       (ax2, f"fixed $\\dot{{m}}$ = {SOURCE_MASS_FLOW} kg/s")]:
+        ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+        ax.set_ylabel("COP [-]")
+        ax.set_title(title)
+        ax.legend(fontsize=7)
+        ax.grid(alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "comparison_modes_COP.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_comparison_modes_cP(analysis):
+    """Side-by-side c_P comparison: fixed_delta_T vs fixed_mass_flow."""
+    sens_dt = analysis["sensitivity_T_source_in"]
+    sens_fm = analysis.get("sensitivity_T_source_in_fm", {})
+    if not sens_fm:
+        return
+
+    heater = analysis["heater_ref"]
+    gas_heater = analysis["gas_heater_ref"]
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens_dt.get((c[0], c[1], T)) is not None for T in T_SOURCE_IN_RANGE)]
+    if not valid:
+        return
+
+    combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+    fig.suptitle(f"$c_P$ vs. $T_{{\\mathrm{{source,in}}}}$ — mode comparison "
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%, "
+                 f"{BASE_E1_C:.0f} ct/kWh, {BASE_FULL_LOAD_HOURS} h/a)",
+                 fontsize=14, fontweight="bold")
+
+    for i, (f1, f2) in enumerate(valid):
+        vals_dt = [sens_dt.get((f1, f2, T))["c_P"] if sens_dt.get((f1, f2, T)) else np.nan
+                   for T in T_SOURCE_IN_RANGE]
+        ax1.plot(T_SOURCE_IN_RANGE, vals_dt, marker="s", markersize=5,
+                 color=combo_colors[i], label=f"{f1}/{f2}")
+
+        vals_fm = [sens_fm.get((f1, f2, T))["c_P"] if sens_fm.get((f1, f2, T)) else np.nan
+                   for T in T_SOURCE_IN_RANGE]
+        ax2.plot(T_SOURCE_IN_RANGE, vals_fm, marker="s", markersize=5,
+                 color=combo_colors[i], label=f"{f1}/{f2}")
+
+    for ax, title in [(ax1, f"fixed $\\Delta T$ = {SOURCE_DELTA_T} K"),
+                       (ax2, f"fixed $\\dot{{m}}$ = {SOURCE_MASS_FLOW} kg/s")]:
+        ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater (ref)")
+        ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater (ref)")
+        ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+        ax.set_ylabel("$c_P$ [EUR/GJ]")
+        ax.set_title(title)
+        ax.legend(fontsize=7)
+        ax.grid(alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "comparison_modes_cP.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ── Mass flow sensitivity plots ──────────────────────────────────────────────
+
+def plot_sensitivity_mass_flow_COP(analysis):
+    """COP vs T_source_in for each mass flow value."""
+    sens = analysis.get("sensitivity_mass_flow", {})
+    if not sens:
+        return
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens.get((c[0], c[1], T_SOURCE_IN_DEFAULT, m)) is not None
+                    for m in SOURCE_MASS_FLOW_RANGE)]
+    if not valid:
+        return
+
+    n_combos = len(valid)
+    fig, axes = plt.subplots(1, n_combos, figsize=(6 * n_combos, 5), sharey=True, squeeze=False)
+    axes = axes[0]
+    m_colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(SOURCE_MASS_FLOW_RANGE)))
+
+    for idx, (f1, f2) in enumerate(valid):
+        ax = axes[idx]
+        for j, m_val in enumerate(SOURCE_MASS_FLOW_RANGE):
+            vals = [sens.get((f1, f2, T, m_val))["COP"]
+                    if sens.get((f1, f2, T, m_val)) else np.nan
+                    for T in T_SOURCE_IN_RANGE]
+            ax.plot(T_SOURCE_IN_RANGE, vals, marker="o", markersize=5,
+                    color=m_colors[j], label=f"$\\dot{{m}}$ = {m_val} kg/s")
+        ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+        if idx == 0:
+            ax.set_ylabel("COP [-]")
+        ax.set_title(f"{f1}/{f2}")
+        ax.legend(fontsize=7)
+        ax.grid(alpha=0.3)
+
+    fig.suptitle(f"COP vs. $T_{{\\mathrm{{source,in}}}}$ — mass flow sensitivity "
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%)",
+                 fontsize=14, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "sensitivity_mass_flow_COP.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_sensitivity_mass_flow_cP(analysis):
+    """c_P vs T_source_in for each mass flow value."""
+    sens = analysis.get("sensitivity_mass_flow", {})
+    if not sens:
+        return
+
+    heater = analysis["heater_ref"]
+    gas_heater = analysis["gas_heater_ref"]
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens.get((c[0], c[1], T_SOURCE_IN_DEFAULT, m)) is not None
+                    for m in SOURCE_MASS_FLOW_RANGE)]
+    if not valid:
+        return
+
+    n_combos = len(valid)
+    fig, axes = plt.subplots(1, n_combos, figsize=(6 * n_combos, 5), sharey=True, squeeze=False)
+    axes = axes[0]
+    m_colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(SOURCE_MASS_FLOW_RANGE)))
+
+    for idx, (f1, f2) in enumerate(valid):
+        ax = axes[idx]
+        for j, m_val in enumerate(SOURCE_MASS_FLOW_RANGE):
+            vals = [sens.get((f1, f2, T, m_val))["c_P"]
+                    if sens.get((f1, f2, T, m_val)) else np.nan
+                    for T in T_SOURCE_IN_RANGE]
+            ax.plot(T_SOURCE_IN_RANGE, vals, marker="s", markersize=5,
+                    color=m_colors[j], label=f"$\\dot{{m}}$ = {m_val} kg/s")
+        ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater")
+        ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater")
+        ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+        if idx == 0:
+            ax.set_ylabel("$c_P$ [EUR/GJ]")
+        ax.set_title(f"{f1}/{f2}")
+        ax.legend(fontsize=7)
+        ax.grid(alpha=0.3)
+
+    fig.suptitle(f"$c_P$ vs. $T_{{\\mathrm{{source,in}}}}$ — mass flow sensitivity "
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%, "
+                 f"{BASE_E1_C:.0f} ct/kWh, {BASE_FULL_LOAD_HOURS} h/a)",
+                 fontsize=14, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "sensitivity_mass_flow_cP.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_sensitivity_mass_flow_epsilon(analysis):
+    """Exergetic efficiency vs T_source_in for each mass flow value."""
+    sens = analysis.get("sensitivity_mass_flow", {})
+    if not sens:
+        return
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens.get((c[0], c[1], T_SOURCE_IN_DEFAULT, m)) is not None
+                    for m in SOURCE_MASS_FLOW_RANGE)]
+    if not valid:
+        return
+
+    n_combos = len(valid)
+    fig, axes = plt.subplots(1, n_combos, figsize=(6 * n_combos, 5), sharey=True, squeeze=False)
+    axes = axes[0]
+    m_colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(SOURCE_MASS_FLOW_RANGE)))
+
+    for idx, (f1, f2) in enumerate(valid):
+        ax = axes[idx]
+        for j, m_val in enumerate(SOURCE_MASS_FLOW_RANGE):
+            vals = [sens.get((f1, f2, T, m_val))["epsilon"] * 100
+                    if sens.get((f1, f2, T, m_val)) else np.nan
+                    for T in T_SOURCE_IN_RANGE]
+            ax.plot(T_SOURCE_IN_RANGE, vals, marker="^", markersize=5,
+                    color=m_colors[j], label=f"$\\dot{{m}}$ = {m_val} kg/s")
+        ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
+        if idx == 0:
+            ax.set_ylabel("$\\varepsilon$ [%]")
+        ax.set_title(f"{f1}/{f2}")
+        ax.legend(fontsize=7)
+        ax.grid(alpha=0.3)
+
+    fig.suptitle(f"$\\varepsilon$ vs. $T_{{\\mathrm{{source,in}}}}$ — mass flow sensitivity "
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%)",
+                 fontsize=14, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "sensitivity_mass_flow_epsilon.png"), dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
 # ── Q-T Diagrams ─────────────────────────────────────────────────────────────
 
 HX_NAMES = ["SRC_HX", "IHX", "SNK_HX"]
@@ -820,16 +1016,7 @@ HX_TITLES = {"SRC_HX": "Source Heat Exchanger", "IHX": "Internal Heat Exchanger"
 
 
 def plot_qt_diagrams(simulations, analysis):
-    """
-    Q-T diagrams for every scenario with successful economics.
-
-    Parameters
-    ----------
-    simulations : dict
-        Output of ``run_all_simulations`` (needs pre-computed ``qt_sections``).
-    analysis : dict
-        Output of ``run_all_analysis`` (used to filter valid scenarios).
-    """
+    """Q-T diagrams for every scenario with successful economics."""
     valid_keys = _valid_scenario_keys(analysis)
     hthp = simulations["hthp"]
     for (f1, f2, ls, T_src_val), sim in hthp.items():
@@ -871,19 +1058,7 @@ _diagram_cache = {}
 
 
 def _get_diagram(fluid):
-    """
-    Return a cached ``FluidPropertyDiagram`` (computed on first call).
-
-    Parameters
-    ----------
-    fluid : str
-        CoolProp fluid name.
-
-    Returns
-    -------
-    FluidPropertyDiagram
-        Ready-to-draw diagram with pre-computed isolines.
-    """
+    """Return a cached FluidPropertyDiagram (computed on first call)."""
     if fluid not in _diagram_cache:
         print(f"  Computing isolines for {fluid} ...")
         d = FluidPropertyDiagram(fluid)
@@ -896,16 +1071,7 @@ def _get_diagram(fluid):
 
 
 def plot_logph_diagrams(simulations, analysis):
-    """
-    Log(p)-h diagrams for every scenario with successful economics.
-
-    Parameters
-    ----------
-    simulations : dict
-        Output of ``run_all_simulations`` (needs ``cycle_states``).
-    analysis : dict
-        Output of ``run_all_analysis`` (used to filter valid scenarios).
-    """
+    """Log(p)-h diagrams for every scenario with successful economics."""
     valid_keys = _valid_scenario_keys(analysis)
     hthp = simulations["hthp"]
     for (f1, f2, ls, T_src_val), sim in hthp.items():
@@ -961,28 +1127,13 @@ def plot_logph_diagrams(simulations, analysis):
 # ── Generate all ─────────────────────────────────────────────────────────────
 
 def generate_all_plots(analysis, simulations):
-    """
-    Generate and save every figure in the study.
-
-    Parameters
-    ----------
-    analysis : dict
-        Output of ``run_all_analysis``.
-    simulations : dict
-        Output of ``run_all_simulations`` (needed for Q-T and log(p)-h plots).
-    """
+    """Generate and save every figure in the study."""
     print("  Comparison bars ...")
     plot_comparison_bars(analysis)
     print("  Comparison heatmaps ...")
     plot_comparison_heatmaps(analysis)
-    print("  Sensitivity: hours ...")
-    plot_sensitivity_hours(analysis)
     print("  Sensitivity: e1c ...")
     plot_sensitivity_e1c(analysis)
-    print("  Sensitivity: hours (alt) ...")
-    plot_sensitivity_hours_alt(analysis)
-    print("  Sensitivity: e1c (alt) ...")
-    plot_sensitivity_e1c_alt(analysis)
     print("  Sensitivity: lift share COP ...")
     plot_sensitivity_lift_share_COP(analysis)
     print("  Sensitivity: lift share c_P ...")
@@ -991,8 +1142,6 @@ def generate_all_plots(analysis, simulations):
     plot_sensitivity_lift_share_epsilon(analysis)
     print("  Sensitivity: lift share heatmap ...")
     plot_sensitivity_lift_share_heatmap(analysis)
-    print("  Sensitivity: hours by lift share ...")
-    plot_sensitivity_hours_by_lift_share(analysis)
     print("  Sensitivity: e1c by lift share ...")
     plot_sensitivity_e1c_by_lift_share(analysis)
     print("  Sensitivity: T_source_in COP ...")
@@ -1005,10 +1154,26 @@ def generate_all_plots(analysis, simulations):
     plot_sensitivity_T_source_in_heatmap(analysis)
     print("  Sensitivity: T_source_in heatmap by lift share ...")
     plot_sensitivity_T_source_in_heatmap_by_lift_share(analysis)
-    print("  Sensitivity: hours by T_source_in ...")
-    plot_sensitivity_hours_by_T_source_in(analysis)
     print("  Sensitivity: e1c by T_source_in ...")
     plot_sensitivity_e1c_by_T_source_in(analysis)
+    # Fixed mass flow mode plots
+    print("  Fixed mass flow: T_source_in COP ...")
+    plot_sensitivity_T_source_in_COP_fm(analysis)
+    print("  Fixed mass flow: T_source_in c_P ...")
+    plot_sensitivity_T_source_in_cP_fm(analysis)
+    print("  Fixed mass flow: T_source_in epsilon ...")
+    plot_sensitivity_T_source_in_epsilon_fm(analysis)
+    print("  Mode comparison: COP ...")
+    plot_comparison_modes_COP(analysis)
+    print("  Mode comparison: c_P ...")
+    plot_comparison_modes_cP(analysis)
+    print("  Mass flow sensitivity: COP ...")
+    plot_sensitivity_mass_flow_COP(analysis)
+    print("  Mass flow sensitivity: c_P ...")
+    plot_sensitivity_mass_flow_cP(analysis)
+    print("  Mass flow sensitivity: epsilon ...")
+    plot_sensitivity_mass_flow_epsilon(analysis)
+    # Per-scenario diagrams
     print("  Q-T diagrams ...")
     plot_qt_diagrams(simulations, analysis)
     print("  Log(p)-h diagrams ...")
