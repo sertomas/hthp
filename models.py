@@ -1,13 +1,13 @@
 """
-Thermodynamic simulation models for the cascaded HTHP and the heater reference.
+Thermodynamic simulation models for the cascaded HTHP and the gas-heater reference.
 
 Provides two public functions:
 
 * ``simulate_hthp`` — builds and solves a two-stage heat-pump TESPy network,
   runs an exergy analysis, and returns all data required by the economics
   and plotting stages.
-* ``simulate_heater`` — analytically computes the same metrics for an
-  electrical resistance heater used as a reference case.
+* ``simulate_gas_heater`` — TESPy combustion-chamber + heat-exchanger model
+  for the natural gas heater used as a reference case.
 """
 
 import json
@@ -24,17 +24,28 @@ from tespy.networks import Network
 from exerpy import ExergyAnalysis
 from exerpy.parser.from_tespy.tespy_parser import to_exerpy
 
-from config import NumpyEncoder, SOURCE_DELTA_T, SOURCE_MASS_FLOW
+from config import (
+    NumpyEncoder,
+    SOURCE_DELTA_T,
+    SOURCE_MASS_FLOW,
+    T_STEAM_DEFAULT,
+    p_water_for_T_steam,
+)
 
 # Shared parameters
 Tamb = 293.15  # K
 pamb = 101325  # Pa
 T_source_in = Tamb - 273.15  # °C (default: 20 °C)
 p_source = 3  # bar (source water circulation pressure)
-p_water = 2  # bar (sink water / steam pressure)
 T_evap_c2 = 60  # °C
 pinch = 5  # K
-T_water_sat = PropsSI("T", "P", p_water * 1e5, "Q", 0, "water") - 273.15
+
+# Default sink-steam conditions (used when T_steam_override is not provided
+# to simulate_hthp / simulate_gas_heater). These are derived from
+# T_STEAM_DEFAULT so that changing the default in config.py automatically
+# propagates here.
+p_water = p_water_for_T_steam(T_STEAM_DEFAULT)  # bar
+T_water_sat = T_STEAM_DEFAULT  # °C — by definition of T_STEAM_DEFAULT
 
 # Absolute pressure drops [bar] (average from literature ranges)
 _DP = {
@@ -43,15 +54,79 @@ _DP = {
     "SNK_HX": (0.250, 0.175),   # (C2 condensing, sink water side)
 }
 
+# Compressor high-side pressure limits per Ommen et al. (2015), Table 3.
+# Cases with cycle high-side pressure exceeding (limit × _OMMEN_P_TOL) fall
+# outside every commercially-available compressor surveyed in the paper and
+# are excluded by simulate_hthp (returns None → cached as "failed").
+# - R290 / R600a: Type 2, 28 bar.
+# - R600 / R1270: not in Ommen Table 3; treated as Type 2 here, mirroring
+#   the proxy mapping used in economics._FLUID_COST_TYPE.
+# - R717: HP envelope (Type 4, 50 bar). LP envelope (Type 3, 28 bar) is
+#   much tighter; switching between LP and HP cost classes happens later
+#   in run_economics based on the simulated discharge pressure.
+# - R744: transcritical Type 5, 140 bar. Cost row exists in Ommen Table 4
+#   but the simulation needs a transcritical TESPy topology (gas cooler,
+#   optimal-pressure search) which is not yet implemented — see the early
+#   reject in simulate_hthp.
+_OMMEN_P_MAX_BAR = {
+    "R290":  28.0,
+    "R1270": 28.0,
+    "R600a": 28.0,
+    "R600":  28.0,
+    "R717":  50.0,
+    "R744": 140.0,
+}
+
+# Engineering tolerance applied on top of the Ommen pressure limits.
+# Real-world catalogue pressure ratings are not exactly the rounded values
+# in Ommen Table 3 and machine families do exist a few bar above the listed
+# ceilings. 10 % is a reasonable buffer to keep marginal cases in scope.
+_OMMEN_P_TOL = 1.10
+
+# Transcritical fluids — high-side pressure cannot be set from saturation
+# at the cooling temperature (no phase change above T_crit). Currently only
+# R744 (CO2). Cycle-1 R744 uses a fixed transcritical pressure; the IHX
+# acts as a gas cooler instead of a condenser.
+_TRANSCRITICAL_FLUIDS = {"R744"}
+
+# Default transcritical high-side pressure [bar]. 100 bar is in the
+# typically-optimal 90-120 bar range for CO2 heat-pumping duty
+# (Neksa et al. 1998, "CO2-heat pump water heater"). Not optimised here;
+# could be a design variable in a follow-up study.
+_R744_P_HIGH_BAR = 100.0
+
+
+def _is_transcritical(fluid):
+    return fluid in _TRANSCRITICAL_FLUIDS
+
+
+def _check_ommen_p_limit(fluid, p_high, cycle_label):
+    """
+    Return True iff the cycle's high-side pressure is within
+    (Ommen 2015 limit) × _OMMEN_P_TOL for the given fluid; otherwise log
+    and return False.
+    """
+    p_max_eff = _OMMEN_P_MAX_BAR[fluid] * _OMMEN_P_TOL
+    if p_high > p_max_eff:
+        print(f"  SKIP: {fluid} ({cycle_label}) high-side p={p_high:.1f} bar "
+              f"> {_OMMEN_P_MAX_BAR[fluid]:.0f} bar × {_OMMEN_P_TOL:.2f} "
+              f"= {p_max_eff:.1f} bar (Ommen 2015 limit + tol)")
+        return False
+    return True
+
+
 # U-Value Lookup Table [W/(m2K)]
+# R744 (CO2) values for transcritical gas cooling are typically a touch
+# higher than HC condensing duty thanks to its thermophysical properties —
+# 1800-2200 W/(m²·K) is a representative range for plate gas coolers.
 _U_VALUES = {
-    "R717":  {"R717": 2200, "R290": 2000, "R1270": 2000, "R600a": 1600, "R600": 1400, "Water": 2000, "Air": 35},
-    "R290":  {"R717": 2000, "R290": 1800, "R1270": 1800, "R600a": 1400, "R600": 1200, "Water": 1700, "Air": 35},
-    "R1270": {"R717": 2000, "R290": 1800, "R1270": 1800, "R600a": 1400, "R600": 1200, "Water": 1700, "Air": 35},
-    "R600a": {"R717": 1600, "R290": 1400, "R1270": 1400, "R600a": 1100, "R600": 1000, "Water": 1300, "Air": 30},
-    "R600":  {"R717": 1400, "R290": 1200, "R1270": 1200, "R600a": 1000, "R600": 900,  "Water": 1100, "Air": 30},
-    "Water": {"R717": 1800, "R290": 1500, "R1270": 1500, "R600a": 1100, "R600": 1000, "Water": 1500, "Air": 35},
-    "Air":   {"R717": 35,   "R290": 35,   "R1270": 35,   "R600a": 30,   "R600": 30,   "Water": 35,   "Air": 15},
+    "R717":  {"R717": 2200, "R290": 2000, "R1270": 2000, "R600a": 1600, "R600": 1400, "R744": 1800, "Water": 2000},
+    "R290":  {"R717": 2000, "R290": 1800, "R1270": 1800, "R600a": 1400, "R600": 1200, "R744": 1500, "Water": 1700},
+    "R1270": {"R717": 2000, "R290": 1800, "R1270": 1800, "R600a": 1400, "R600": 1200, "R744": 1500, "Water": 1700},
+    "R600a": {"R717": 1600, "R290": 1400, "R1270": 1400, "R600a": 1100, "R600": 1000, "R744": 1300, "Water": 1300},
+    "R600":  {"R717": 1400, "R290": 1200, "R1270": 1200, "R600a": 1000, "R600": 900,  "R744": 1100, "Water": 1100},
+    "R744":  {"R717": 1800, "R290": 1500, "R1270": 1500, "R600a": 1300, "R600": 1100, "R744": 1500, "Water": 2000},
+    "Water": {"R717": 1800, "R290": 1500, "R1270": 1500, "R600a": 1100, "R600": 1000, "R744": 2000, "Water": 1500},
 }
 
 
@@ -62,7 +137,7 @@ def get_U(fluid_a, fluid_b):
     Parameters
     ----------
     fluid_a : str
-        Hot-side fluid name (e.g. ``"R717"``, ``"Air"``, ``"Water"``).
+        Hot-side fluid name (e.g. ``"R717"``, ``"Water"``).
     fluid_b : str
         Cold-side fluid name.
 
@@ -234,28 +309,22 @@ def reconstruct_ean(exerpy_json_path, T_source_in_val):
     """
     ean = ExergyAnalysis.from_json(exerpy_json_path)
 
-    # Classify streams (same logic as in simulate_hthp)
-    Tamb_degC = Tamb - 273.15
+    # Classify streams (same split as in simulate_hthp)
+    # Source water inlet (11) → system FUEL: water arrives carrying useful
+    # exergy (T_src ≥ Tamb in our case study), priced at c = 0.
+    # Source water outlet (13) → system LOSS: whatever exergy is left after
+    # the SRC_HX leaves the system unrecovered (back-calculated cost).
+    # This split avoids the binary cliff at T_src = Tamb that the previous
+    # paired-fuel/paired-loss logic introduced. Used unconditionally — the
+    # T_src_in_val argument is kept for API stability.
+    del T_source_in_val
     product = {"inputs": ["43"], "outputs": ["41"]}
-
-    fuel_inputs = ["e1"]
-    fuel_outputs = []
-    loss_inputs = []
-    loss_outputs = []
-
-    if T_source_in_val > Tamb_degC:
-        fuel_inputs.append("11")
-        fuel_outputs.append("13")
-    else:
-        loss_outputs.append("11")
-        loss_inputs.append("13")
-
-    fuel = {"inputs": fuel_inputs, "outputs": fuel_outputs}
-    if loss_inputs or loss_outputs:
-        loss = {"inputs": loss_inputs, "outputs": loss_outputs}
-        ean.analyse(E_F=fuel, E_P=product, E_L=loss)
-    else:
-        ean.analyse(E_F=fuel, E_P=product)
+    # exerpy convention: "inputs" ADD to the category, "outputs" SUBTRACT.
+    # 11 in fuel.inputs  → +E_11 to system fuel (water arriving with exergy)
+    # 13 in loss.inputs  → +E_13 to system loss (water leaving with exergy)
+    fuel = {"inputs": ["e1", "11"], "outputs": []}
+    loss = {"inputs": ["13"], "outputs": []}
+    ean.analyse(E_F=fuel, E_P=product, E_L=loss)
 
     _patch_dissipative_hx(ean)
     return ean
@@ -263,7 +332,8 @@ def reconstruct_ean(exerpy_json_path, T_source_in_val):
 
 def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
                    T_source_in_override=None, source_mode="fixed_delta_T",
-                   m_source=None):
+                   m_source=None, T_steam_override=None,
+                   skip_ommen_check=False):
     """
     Build and solve the cascaded HTHP network for a given fluid combination.
 
@@ -291,6 +361,11 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
     m_source : float, optional
         Source water mass flow [kg/s] for ``"fixed_mass_flow"`` mode.
         Defaults to ``SOURCE_MASS_FLOW`` from config.
+    T_steam_override : float, optional
+        Sink-steam saturation temperature [deg C]. Defaults to
+        ``T_STEAM_DEFAULT`` (120 °C). Lower values relax the cycle-2
+        condensing pressure and bring fluids like R600a back into the
+        Ommen 2015 compressor envelope.
 
     Returns
     -------
@@ -308,26 +383,46 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
     """
     T_evap_c2_val = T_evap_c2_override if T_evap_c2_override is not None else T_evap_c2
     T_src_in_val = T_source_in_override if T_source_in_override is not None else T_source_in
+    T_steam_val = T_steam_override if T_steam_override is not None else T_water_sat
+    p_water_val = p_water_for_T_steam(T_steam_val)
     delta_T_src = get_source_delta_T(T_src_in_val)
     T_src_out_val = T_src_in_val - delta_T_src
     T_cond_c1_est = T_evap_c2_val + pinch
-    T_cond_c2_est = T_water_sat + pinch
+    T_cond_c2_est = T_steam_val + pinch
     T_evap_c1_est = T_src_out_val - pinch
 
     T_crit_c1 = PropsSI("Tcrit", fluid_cycle1) - 273.15
     T_crit_c2 = PropsSI("Tcrit", fluid_cycle2) - 273.15
 
-    if T_cond_c1_est >= T_crit_c1:
+    is_c1_transcritical = _is_transcritical(fluid_cycle1)
+    is_c2_transcritical = _is_transcritical(fluid_cycle2)
+
+    # Critical-temperature pre-checks. For transcritical fluids the cycle
+    # high-side runs above T_crit by design — skip the rejection there.
+    if not is_c1_transcritical and T_cond_c1_est >= T_crit_c1:
         print(f"  SKIP: {fluid_cycle1} critical temp ({T_crit_c1:.1f} °C) < condensing temp ({T_cond_c1_est:.1f} °C)")
         return None
-    if T_cond_c2_est >= T_crit_c2:
+    if not is_c2_transcritical and T_cond_c2_est >= T_crit_c2:
         print(f"  SKIP: {fluid_cycle2} critical temp ({T_crit_c2:.1f} °C) < condensing temp ({T_cond_c2_est:.1f} °C)")
+        return None
+    # R744 cycle-1 evaporator is still subcritical (T_evap < 31 °C); reject
+    # if T_evap_c1_est is at or above T_crit (would require an unusual
+    # transcritical evaporation that this model doesn't support).
+    if is_c1_transcritical and T_evap_c1_est >= T_crit_c1:
+        print(f"  SKIP: {fluid_cycle1} evaporator T ({T_evap_c1_est:.1f} °C) >= T_crit "
+              f"({T_crit_c1:.1f} °C) — transcritical evap not supported")
         return None
 
     try:
         p_evap_c1 = PropsSI("P", "T", T_evap_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
-        p_cond_c1 = PropsSI("P", "T", T_cond_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
-        p_cond_c2 = PropsSI("P", "T", T_cond_c2_est + 273.15, "Q", 1, fluid_cycle2) / 1e5
+        if is_c1_transcritical:
+            p_cond_c1 = _R744_P_HIGH_BAR  # fixed transcritical high-side pressure
+        else:
+            p_cond_c1 = PropsSI("P", "T", T_cond_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
+        if is_c2_transcritical:
+            p_cond_c2 = _R744_P_HIGH_BAR
+        else:
+            p_cond_c2 = PropsSI("P", "T", T_cond_c2_est + 273.15, "Q", 1, fluid_cycle2) / 1e5
 
         nw = Network(T_unit="C", p_unit="bar", h_unit="kJ / kg", m_unit="kg / s", iterinfo=False)
 
@@ -414,53 +509,88 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # Cycle 1 boundary conditions
         c21.set_attr(fluid={fluid_cycle1: 1}, td_dew=pinch)
         c22.set_attr(p=p_cond_c1)
-        c23.set_attr(td_bubble=pinch)
+        if is_c1_transcritical:
+            # Gas cooler outlet: no saturation. Set hot-end exit T directly
+            # (= T_evap_c2 + pinch — same target as the subcritical condenser).
+            c23.set_attr(T=T_cond_c1_est)
+        else:
+            c23.set_attr(td_bubble=pinch)
         c24.set_attr(p=p_evap_c1)
 
         # Cycle 2 boundary conditions
         c31.set_attr(fluid={fluid_cycle2: 1}, td_dew=pinch)
         c32.set_attr(p=p_cond_c2)
-        c33.set_attr(x=0)
+        if is_c2_transcritical:
+            c33.set_attr(T=T_cond_c2_est)
+        else:
+            c33.set_attr(x=0)
         c34.set_attr(T=T_evap_c2_val)
 
         # Sink water boundary conditions
-        c41.set_attr(fluid={"water": 1}, p=p_water, x=0, m=1)
+        c41.set_attr(fluid={"water": 1}, p=p_water_val, x=0, m=1)
         c43.set_attr(x=1, p=Ref(c41, 1, 0))
 
         # Component parameters
-        comp1.set_attr(eta_s=0.74)
-        comp2.set_attr(eta_s=0.74)
+        # Compressor isentropic efficiency and motor electrical efficiency taken
+        # from Ommen et al. (2015), "Technical and economic working domains of
+        # industrial heat pumps: Part 1 - Single stage vapour compression heat
+        # pumps", Int. J. Refrigeration 55, 168-182 — Table 1.
+        # Pump isentropic efficiency is not specified by Ommen 2015 (no pumps
+        # are costed in that study); kept at 0.80 as a literature default.
+        comp1.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
+        comp2.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
         src_pump.set_attr(eta_s=0.8)
         snk_pump.set_attr(eta_s=0.8)
         src_hx.set_attr(dp1=_DP["SRC_HX"][0], dp2=_DP["SRC_HX"][1])
         ihx.set_attr(dp1=_DP["IHX"][0], dp2=_DP["IHX"][1])
         snk_hx.set_attr(dp1=_DP["SNK_HX"][0], dp2=_DP["SNK_HX"][1])
-        motor1.set_attr(eta=0.985)
-        motor2.set_attr(eta=0.985)
-        motor3.set_attr(eta=0.985)
-        motor4.set_attr(eta=0.985)
+        motor1.set_attr(eta=0.95)    # Ommen 2015, Table 1
+        motor2.set_attr(eta=0.95)    # Ommen 2015, Table 1
+        motor3.set_attr(eta=0.95)    # Ommen 2015, Table 1
+        motor4.set_attr(eta=0.95)    # Ommen 2015, Table 1
 
         nw.solve("design")
 
-        # Second solve: relax pressures and use pinch constraints
-        c22.set_attr(p=None)
+        # Second solve: relax pressures and use pinch constraints. For
+        # transcritical cycles the high-side pressure is a design variable
+        # we hold fixed (not driven by saturation), and the gas-cooler
+        # outlet temperature is already pinned by c23.T (cycle 1) or c33.T
+        # (cycle 2), so adding td_pinch on the IHX would over-constrain.
         c24.set_attr(p=None)
-        c32.set_attr(p=None)
+        if not is_c1_transcritical:
+            c22.set_attr(p=None)
+        if not is_c2_transcritical:
+            c32.set_attr(p=None)
         src_hx.set_attr(ttd_l=5)
-        ihx.set_attr(td_pinch=5)
+        if not (is_c1_transcritical or is_c2_transcritical):
+            ihx.set_attr(td_pinch=5)
         snk_hx.set_attr(ttd_l=5)
 
         nw.solve("design")
 
-        # Reject if cycle-1 pressure reaches 95 % of its critical pressure.
-        # Cycle 2 is not checked — its condensing conditions are fixed by the
-        # steam temperature and already validated by the T_crit pre-check.
-        p_crit_c1 = PropsSI("Pcrit", fluid_cycle1) / 1e5  # bar
-        for conn in [c21, c22, c22c, c23, c24]:
-            if conn.p.val >= 0.95 * p_crit_c1:
-                print(f"  SKIP: {fluid_cycle1} at {conn.label} reaches "
-                      f"{conn.p.val:.1f} bar >= 95% of p_crit "
-                      f"({p_crit_c1:.1f} bar)")
+        # Reject if subcritical cycle-1 pressure reaches 95 % of critical.
+        # Skipped for transcritical cycle 1 — operation above p_crit is the
+        # whole point of the cycle there.
+        if not is_c1_transcritical:
+            p_crit_c1 = PropsSI("Pcrit", fluid_cycle1) / 1e5  # bar
+            for conn in [c21, c22, c22c, c23, c24]:
+                if conn.p.val >= 0.95 * p_crit_c1:
+                    print(f"  SKIP: {fluid_cycle1} at {conn.label} reaches "
+                          f"{conn.p.val:.1f} bar >= 95% of p_crit "
+                          f"({p_crit_c1:.1f} bar)")
+                    return None
+
+        # Reject if either cycle's high-side pressure exceeds the Ommen 2015
+        # compressor envelope (no machine in the paper covers that operating
+        # point and the cost correlation cannot be evaluated honestly).
+        # Bypassed when ``skip_ommen_check=True`` so the feasibility screener
+        # can post-process the full data and report which constraint failed.
+        p_high_c1 = max(c22.p.val, c22c.p.val, c23.p.val)
+        p_high_c2 = max(c32.p.val, c32c.p.val, c33.p.val)
+        if not skip_ommen_check:
+            if not _check_ommen_p_limit(fluid_cycle1, p_high_c1, "cycle 1"):
+                return None
+            if not _check_ommen_p_limit(fluid_cycle2, p_high_c2, "cycle 2"):
                 return None
 
         Q_H = c41.m.val * (c43.h.val - c41.h.val)  # kW
@@ -468,7 +598,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # COP from energy balance (independent of exergy definitions)
         W_shaft_total = (abs(comp1.P.val) + abs(comp2.P.val)
                          + abs(src_pump.P.val) + abs(snk_pump.P.val))  # W
-        eta_motor = 0.985
+        eta_motor = 0.95   # Ommen 2015, Table 1
         W_el = W_shaft_total / eta_motor
         COP = Q_H * 1000 / W_el  # Q_H [kW] → [W]
 
@@ -477,27 +607,21 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         product = {"inputs": ["43"], "outputs": ["41"]}
         Tamb_degC = Tamb - 273.15
 
-        fuel_inputs = ["e1"]
-        fuel_outputs = []
-        loss_inputs = []
-        loss_outputs = []
-
-        # Source water streams must stay paired in the same category.
-        # When T_source > Tamb: net exergy from water is fuel → both in fuel.
-        # When T_source ≈ Tamb: cooling below ambient is a loss → both in loss.
-        if T_src_in_val > Tamb_degC:
-            fuel_inputs.append("11")
-            fuel_outputs.append("13")
-        else:
-            loss_outputs.append("11")
-            loss_inputs.append("13")
-
-        fuel = {"inputs": fuel_inputs, "outputs": fuel_outputs}
-        if loss_inputs or loss_outputs:
-            loss = {"inputs": loss_inputs, "outputs": loss_outputs}
-            ean.analyse(E_F=fuel, E_P=product, E_L=loss)
-        else:
-            ean.analyse(E_F=fuel, E_P=product)
+        # Source water inlet (11) → system FUEL: water arrives carrying
+        # useful exergy and is priced at c = 0 (free reservoir).
+        # Source water outlet (13) → system LOSS: whatever exergy remains
+        # after the SRC_HX leaves the system unrecovered.
+        # Split (rather than the previous paired fuel/loss with T_src vs
+        # Tamb conditional) gives a clean, continuous boundary definition
+        # that does not flip at T_src = Tamb. Tamb_degC is kept available
+        # for downstream patches but no longer drives the classification.
+        del Tamb_degC
+        # exerpy convention: "inputs" ADD to the category, "outputs" SUBTRACT.
+        # 11 in fuel.inputs  → +E_11 to system fuel (water arriving with exergy)
+        # 13 in loss.inputs  → +E_13 to system loss (water leaving with exergy)
+        fuel = {"inputs": ["e1", "11"], "outputs": []}
+        loss = {"inputs": ["13"], "outputs": []}
+        ean.analyse(E_F=fuel, E_P=product, E_L=loss)
 
         # Patch dissipative HX before economics can run
         _patch_dissipative_hx(ean)
@@ -586,75 +710,46 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         return None
 
 
-def simulate_heater():
-    """
-    Compute thermodynamic and exergy results for an electrical resistance heater.
-
-    Uses the same water-side boundary conditions as the HTHP
-    (p = 2 bar, x = 0 -> x = 1, m = 1 kg/s).  Because electricity is
-    pure exergy the fuel exergy equals the heating duty: E_F = Q_H.
-
-    Returns
-    -------
-    dict
-        Keys: ``COP`` (always 1.0), ``epsilon``, ``E_F`` [W], ``E_P`` [W],
-        ``E_D`` [W], ``Q_H`` [W].
-    """
-    p = p_water * 2e5  # Pa
-    m = 1.0  # kg/s
-
-    h_in = PropsSI("H", "P", p, "Q", 0, "water")  # J/kg
-    h_out = PropsSI("H", "P", p, "Q", 1, "water")  # J/kg
-    s_in = PropsSI("S", "P", p, "Q", 0, "water")  # J/(kgK)
-    s_out = PropsSI("S", "P", p, "Q", 1, "water")  # J/(kgK)
-
-    h0 = PropsSI("H", "T", Tamb, "P", pamb, "water")  # J/kg
-    s0 = PropsSI("S", "T", Tamb, "P", pamb, "water")  # J/(kgK)
-
-    Q_H = m * (h_out - h_in)  # W
-
-    e_in = (h_in - h0) - Tamb * (s_in - s0)  # J/kg
-    e_out = (h_out - h0) - Tamb * (s_out - s0)  # J/kg
-
-    E_F = Q_H  # W (electricity = pure exergy)
-    E_P = m * (e_out - e_in)  # W
-    E_D = E_F - E_P  # W
-
-    return {
-        "COP": 1.0,
-        "epsilon": E_P / E_F,
-        "E_F": E_F,
-        "E_P": E_P,
-        "E_D": E_D,
-        "Q_H": Q_H,
-    }
-
-
-def simulate_gas_heater(eta_gas=0.95):
+def simulate_gas_heater(eta_gas=0.90, T_steam_override=None):
     """
     Build and solve a TESPy gas heater: CombustionChamber + HeatExchanger.
 
     Uses the Ahrendts chemical exergy database for proper exergy accounting
     of the natural gas (CH4) fuel stream.  The water side uses the same
-    boundary conditions as the electric heater (p = 2 bar, x = 0 → 1, m = 1 kg/s).
+    boundary conditions as the HTHP sink (saturated water → saturated steam,
+    m = 1 kg/s).
 
     Parameters
     ----------
     eta_gas : float, optional
-        Thermal efficiency of the gas heater (default 0.95).
+        Thermal efficiency of the gas heater. Default 0.90 from Ommen et al.
+        (2015), "Technical and economic working domains of industrial heat
+        pumps: Part 1", Int. J. Refrigeration 55, 168-182, Table 1
+        ("Natural gas burner efficiency = 0.9").
+    T_steam_override : float, optional
+        Sink-steam saturation temperature [deg C]. Defaults to
+        ``T_STEAM_DEFAULT`` (120 °C). The water-side pressure is derived
+        from this temperature.
 
     Returns
     -------
     dict
         Keys: ``COP`` (= eta_gas), ``epsilon``, ``E_F`` [W], ``E_P`` [W],
-        ``E_D`` [W], ``Q_H`` [W], ``Q_gas`` [W].
+        ``E_D`` [W], ``Q_H`` [W], ``Q_gas`` [W], ``m_dot_CO2`` [kg/s],
+        ``exerpy_data`` (full TESPy + exerpy network dump: connections,
+        components, parameters; same shape as ``simulate_hthp``),
+        ``ean`` (the ``ExergyAnalysis`` object — needed by
+        ``run_economics_gas_heater`` to build the exergoeconomic balance).
     """
     from tespy.components import CombustionChamber
     from tespy.components import HeatExchanger
 
+    T_steam_val = T_steam_override if T_steam_override is not None else T_water_sat
+    p_water_val = p_water_for_T_steam(T_steam_val)
+
     # Pre-compute water-side duty to set CC thermal input
-    h_in_w = PropsSI("H", "P", p_water * 1e5, "Q", 0, "water")  # J/kg
-    h_out_w = PropsSI("H", "P", p_water * 1e5, "Q", 1, "water")  # J/kg
+    h_in_w = PropsSI("H", "P", p_water_val * 1e5, "Q", 0, "water")  # J/kg
+    h_out_w = PropsSI("H", "P", p_water_val * 1e5, "Q", 1, "water")  # J/kg
     Q_H_W = 1.0 * (h_out_w - h_in_w)  # W (m = 1 kg/s)
     ti_W = Q_H_W / eta_gas  # CC thermal input [W]
 
@@ -688,8 +783,8 @@ def simulate_gas_heater(eta_gas=0.95):
     g1.set_attr(fluid={"CH4": 0, "O2": 0.2314, "N2": 0.7553, "CO2": 0.0004, "H2O": 0, "Ar": 0.0129}, T=Tamb - 273.15, p=pamb / 1e5)
     g2.set_attr(fluid={"CH4": 1}, T=Tamb - 273.15)
 
-    # Water: saturated liquid in → saturated vapour out at p_water
-    w1.set_attr(fluid={"H2O": 1}, p=p_water, x=0, m=1)
+    # Water: saturated liquid in → saturated vapour out at p_water_val
+    w1.set_attr(fluid={"H2O": 1}, p=p_water_val, x=0, m=1)
     w2.set_attr(x=1)
 
     # CC: excess air ratio λ = 1.2, thermal input in W
@@ -705,10 +800,22 @@ def simulate_gas_heater(eta_gas=0.95):
         nw, Tamb=Tamb, pamb=pamb, chemExLib="Ahrendts",
     )
     ean.analyse(
-        E_F={"inputs": ["g2"]},
+        E_F={"inputs": ["g2", "g1"]},
         E_P={"inputs": ["w2"], "outputs": ["w1"]},
-        E_L={"inputs": ["g4"], "outputs": ["g1"]},
+        E_L={"inputs": ["g4"]},
     )
+
+    # CO2 emission rate from CH4 combustion. Stoichiometry CH4 + 2 O2 →
+    # CO2 + 2 H2O gives 1 mol CO2 per mol CH4; m_CO2 = m_CH4 · M_CO2/M_CH4.
+    # Fuel stream g2 is pure methane (set above), so g2.m.val is m_CH4.
+    M_CH4 = 16.043   # kg/kmol
+    M_CO2 = 44.010   # kg/kmol
+    m_dot_CO2 = g2.m.val * (M_CO2 / M_CH4)   # kg/s
+
+    # Full exerpy-format network dump (state points + components +
+    # exergy decomposition per stream). Same shape as the HTHP path so
+    # downstream serialisation can reuse the same JSON / CSV layout.
+    exerpy_data = to_exerpy(nw, Tamb=Tamb, pamb=pamb)
 
     return {
         "COP": eta_gas,
@@ -718,4 +825,7 @@ def simulate_gas_heater(eta_gas=0.95):
         "E_D": ean.E_D,      # exergy destruction [W]
         "Q_H": Q_H_W,        # heating duty [W]
         "Q_gas": ti_W,       # LHV-based gas energy input [W]
+        "m_dot_CO2": m_dot_CO2,      # CO2 emitted by combustion [kg/s]
+        "exerpy_data": exerpy_data,  # full state-point + component dump
+        "ean": ean,                  # for run_economics_gas_heater
     }

@@ -1,0 +1,431 @@
+"""
+export_design_details.py — Per-design TESPy + exergoeconomic export.
+
+For every OK (modern envelope) design at LS ∈ {0.30, 0.40, 0.50} of the
+steam-at-110 °C case study, re-run simulate_hthp and dump:
+
+    results/case_steam_110/designs/<f1>_<f2>/LS<XX>_Tsrc<YY>/
+        connections.csv                    — TESPy state per labeled conn
+                                              (m, T, p, h, s, v, e_T/e_M/e_PH)
+        components.csv                     — TESPy component parameters
+                                              (P, Q, pr, eta_s, kA, ttd, ...)
+        qt_diagram.png                     — Q-T profiles for SRC_HX, IHX, SNK_HX
+        logph_diagram.png                  — log(p)-h via fluprodia (0.1–200 bar)
+        exergoeco_components.csv           — C_F, C_P, C_D, Z, c_F, c_P, f, r
+        exergoeco_connections_material.csv — exergy + cost (C^T, C^M, C^TOT, c^T,...)
+        exergoeco_connections_nonmat.csv   — power/heat connections (C^TOT, c^TOT)
+
+Economics is run at native simulation scale (m_steam = 1 kg/s, ~2.23 MWth)
+with BASE_FULL_LOAD_HOURS / BASE_E1_C from config — same scale that
+case_steam_110_economics.py uses for the headline c_P numbers.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+import warnings
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from config import (
+    BASE_E1_C, BASE_FULL_LOAD_HOURS,
+    T_STEAM_CASE_110, lift_share_to_T34,
+)
+from economics import run_economics
+from models import simulate_hthp
+
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+logging.disable(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+
+
+CASE_DIR = os.path.join("results", "case_steam_110")
+ENRICHED_CSV = os.path.join(CASE_DIR, "case_steam_110_enriched.csv")
+DESIGNS_DIR = os.path.join(CASE_DIR, "designs")
+_T_STEAM_CURRENT = 110.0
+
+
+def _set_paths_for_T_steam(T_steam):
+    """Rewrite the module-level path globals for a given T_steam."""
+    global CASE_DIR, ENRICHED_CSV, DESIGNS_DIR, _T_STEAM_CURRENT
+    from config import case_results_dir
+    CASE_DIR = case_results_dir(T_steam)
+    ENRICHED_CSV = os.path.join(CASE_DIR, f"case_steam_{int(T_steam)}_enriched.csv")
+    DESIGNS_DIR = os.path.join(CASE_DIR, "designs")
+    _T_STEAM_CURRENT = T_steam
+
+# Map connection label → fluid (used for header annotation in CSV)
+def _fluid_for_label(label, f1, f2):
+    s = str(label)
+    if s.startswith("1") or s in ("11", "12", "13"):
+        return "water (source)"
+    if s.startswith("2"):
+        return f1
+    if s.startswith("3"):
+        return f2
+    if s.startswith("4"):
+        return "water (sink)"
+    return ""
+
+
+# ── Connections export ──────────────────────────────────────────────────────
+
+def _connections_dataframe(sim):
+    f1 = sim["fluid_cycle1"]
+    f2 = sim["fluid_cycle2"]
+    conns = sim["exerpy_data"]["connections"]
+    rows = []
+    for label, c in conns.items():
+        if c.get("kind") != "material":
+            # power connections, control etc. — skipped
+            continue
+        T_K = c.get("T")
+        p_pa = c.get("p")
+        h_J = c.get("h")
+        s_J = c.get("s")
+        v_m3kg = c.get("v")
+        m = c.get("m")
+        rows.append({
+            "label": str(label),
+            "fluid": _fluid_for_label(label, f1, f2),
+            "from": c.get("source_component", ""),
+            "to": c.get("target_component", ""),
+            "m [kg/s]": round(m, 5) if m is not None else "",
+            "T [°C]": round(T_K - 273.15, 2) if T_K is not None else "",
+            "p [bar]": round(p_pa / 1e5, 4) if p_pa is not None else "",
+            "h [kJ/kg]": round(h_J / 1e3, 3) if h_J is not None else "",
+            "s [kJ/(kg·K)]": round(s_J / 1e3, 4) if s_J is not None else "",
+            "v [m³/kg]": round(v_m3kg, 6) if v_m3kg is not None else "",
+            "rho [kg/m³]": round(1.0 / v_m3kg, 3) if v_m3kg else "",
+            "V_dot [m³/h]": round(m * v_m3kg * 3600, 2) if (m and v_m3kg) else "",
+            "e_T [J/kg]": round(c.get("e_T", 0.0), 2),
+            "e_M [J/kg]": round(c.get("e_M", 0.0), 2),
+            "e_PH [J/kg]": round(c.get("e_PH", 0.0), 2),
+        })
+    df = pd.DataFrame(rows)
+    # Sort by label numerically where possible (cycle1 first, then cycle2)
+    def _sort_key(s):
+        try:
+            return (int(str(s).rstrip("c")), 1 if str(s).endswith("c") else 0)
+        except Exception:
+            return (10**6, 0)
+    df["_k"] = df["label"].apply(_sort_key)
+    df = df.sort_values("_k").drop(columns=["_k"])
+    return df
+
+
+# ── Components export ───────────────────────────────────────────────────────
+
+# Parameters worth reporting per component type (parameter, divisor for unit
+# normalisation, output column header).
+_COMP_PARAMS = {
+    "Compressor": [
+        ("P",       1e3, "P [kW]"),
+        ("pr",      1.0, "pressure ratio"),
+        ("dp",      1.0, "Δp [bar]"),
+        ("eta_s",   1.0, "η_s"),
+    ],
+    "HeatExchanger": [
+        ("Q",       1e3, "Q [kW]"),
+        ("kA",      1e3, "kA [kW/K]"),
+        ("UA",      1e3, "UA [kW/K]"),
+        ("ttd_u",   1.0, "ΔT_upper [K]"),
+        ("ttd_l",   1.0, "ΔT_lower [K]"),
+        ("td_pinch",1.0, "ΔT_pinch [K]"),
+        ("td_log",  1.0, "LMTD [K]"),
+        ("pr1",     1.0, "pr_hot"),
+        ("pr2",     1.0, "pr_cold"),
+        ("eff_hot", 1.0, "ε_hot"),
+        ("eff_cold",1.0, "ε_cold"),
+    ],
+    "Motor": [
+        ("P_in",    1e3, "P_in [kW]"),
+        ("P_out",   1e3, "P_out [kW]"),
+        ("eta",     1.0, "η"),
+    ],
+    "Pump": [
+        ("P",       1e3, "P [kW]"),
+        ("pr",      1.0, "pressure ratio"),
+        ("dp",      1.0, "Δp [bar]"),
+        ("eta_s",   1.0, "η_s"),
+    ],
+    "Valve": [
+        ("pr",      1.0, "pressure ratio"),
+        ("dp",      1.0, "Δp [bar]"),
+    ],
+    "PowerBus": [
+        ("P_in_total",  1e3, "P_in_total [kW]"),
+        ("P_out_total", 1e3, "P_out_total [kW]"),
+    ],
+}
+
+
+def _components_dataframe(sim):
+    comps = sim["exerpy_data"]["components"]
+    rows = []
+    for ctype, units in comps.items():
+        cfg = _COMP_PARAMS.get(ctype)
+        if cfg is None:
+            continue
+        for name, comp in units.items():
+            params = comp.get("parameters", {})
+            row = {"name": name, "type": ctype}
+            for key, divisor, header in cfg:
+                v = params.get(key)
+                if v is None:
+                    row[header] = ""
+                    continue
+                try:
+                    row[header] = round(float(v) / divisor, 4)
+                except Exception:
+                    row[header] = v
+            rows.append(row)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    # Order: Compressor, Pump, HeatExchanger, Motor, Valve, others
+    type_order = ["Compressor", "Pump", "HeatExchanger", "Motor", "Valve",
+                  "PowerBus", "CycleCloser"]
+    df["_k"] = df["type"].map({t: i for i, t in enumerate(type_order)}).fillna(99)
+    df = df.sort_values(["_k", "name"]).drop(columns=["_k"])
+    return df
+
+
+# ── Q-T plot ────────────────────────────────────────────────────────────────
+
+HX_NAMES = ["SRC_HX", "IHX", "SNK_HX"]
+HX_TITLES = {
+    "SRC_HX": "Source HX (cycle-1 evaporator)",
+    "IHX":    "Internal HX (cycle-1 condenser / cycle-2 evaporator)",
+    "SNK_HX": "Sink HX (cycle-2 condenser, generates steam)",
+}
+
+
+# log(p)-h plotting via fluprodia — same approach as the original plot.py.
+#
+# Uses set_isolines_subcritical(T_min=-40, T_max=T_crit-2) for a clean
+# subcritical isoline set (saturation dome + isobars + isotherms + isenthalps
+# + isentropes), and pins the y-axis to a fixed engineering window
+# (0.1–200 bar) so every design plots on the same scale.
+
+LOGPH_P_MIN_BAR = 1.0
+LOGPH_P_MAX_BAR = 200.0
+
+_diagram_cache = {}
+
+
+def _get_diagram(fluid):
+    """Return a cached FluidPropertyDiagram (computed on first call)."""
+    from fluprodia import FluidPropertyDiagram
+    if fluid not in _diagram_cache:
+        d = FluidPropertyDiagram(fluid)
+        d.set_unit_system(T="°C", p="bar", h="kJ/kg", s="kJ/kgK")
+        T_crit = d.convert_from_SI(d.T_crit, "T")
+        d.set_isolines_subcritical(T_min=-40, T_max=T_crit - 2)
+        d.calc_isolines()
+        _diagram_cache[fluid] = d
+    return _diagram_cache[fluid]
+
+
+def _plot_logph_one_cycle(fig, ax, fluid, points, cycle_label):
+    """Draw fluprodia isolines + cycle loop on one log(p)-h axis."""
+    diagram = _get_diagram(fluid)
+    h_vals = [pt["h"] for pt in points]
+    p_vals = [pt["p"] for pt in points]
+    h_margin = (max(h_vals) - min(h_vals)) * 0.3
+
+    diagram.draw_isolines(
+        fig=fig, ax=ax, diagram_type="logph",
+        x_min=min(h_vals) - h_margin, x_max=max(h_vals) + h_margin,
+        y_min=LOGPH_P_MIN_BAR, y_max=LOGPH_P_MAX_BAR,
+    )
+
+    # Closed cycle loop (last point → first)
+    h_cycle = h_vals + [h_vals[0]]
+    p_cycle = p_vals + [p_vals[0]]
+    ax.plot(h_cycle, p_cycle, "r-", linewidth=2.5, zorder=3)
+    ax.plot(h_vals, p_vals, "ko", markersize=8, zorder=4)
+
+    for pt in points:
+        ax.annotate(pt["label"], (pt["h"], pt["p"]),
+                    textcoords="offset points", xytext=(8, 8),
+                    fontsize=10, fontweight="bold")
+
+    ax.set_ylim(LOGPH_P_MIN_BAR, LOGPH_P_MAX_BAR)
+    ax.set_title(f"{cycle_label}: {fluid}")
+
+
+def _plot_logph(sim, out_path, title_extra=""):
+    """Two-panel log(p)-h diagram (cycle 1 LP / cycle 2 HP) via fluprodia."""
+    f1 = sim["fluid_cycle1"]
+    f2 = sim["fluid_cycle2"]
+    states = sim["cycle_states"]
+
+    fig, (ax_c1, ax_c2) = plt.subplots(1, 2, figsize=(18, 7))
+    _plot_logph_one_cycle(fig, ax_c1, f1, states["cycle1"]["points"],
+                          "Cycle 1 (lower)")
+    _plot_logph_one_cycle(fig, ax_c2, f2, states["cycle2"]["points"],
+                          "Cycle 2 (upper)")
+
+    fig.suptitle(f"Log(p)–h diagram — {title_extra}",
+                 fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_qt(sim, out_path, title_extra=""):
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5), squeeze=False)
+    axes = axes[0]
+    for ax, hx_name in zip(axes, HX_NAMES):
+        qt = sim["qt_sections"][hx_name]
+        Q = np.asarray(qt["Q"])
+        T_hot = np.asarray(qt["T_hot"])
+        T_cold = np.asarray(qt["T_cold"])
+        ax.plot(Q, T_hot, "r-o", markersize=4, linewidth=1.4, label="Hot side")
+        ax.plot(Q, T_cold, "b-o", markersize=4, linewidth=1.4, label="Cold side")
+        ax.fill_between(Q, T_cold, T_hot, alpha=0.10, color="gray")
+        ax.set_xlabel("Q [kW]")
+        ax.set_ylabel("T [°C]")
+        ax.set_title(HX_TITLES[hx_name], fontsize=10)
+        ax.legend(fontsize=8, loc="best")
+        ax.grid(alpha=0.3)
+    fig.suptitle(f"Q–T diagrams — {title_extra}", fontsize=11, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    fig.savefig(out_path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ── Exergoeconomic export ───────────────────────────────────────────────────
+
+def _export_exergoeco_csvs(sim, out_dir):
+    """Run exergoeconomics at native scale and dump 3 CSVs.
+
+    Returns the (c_P, Z_sum) headline pair for logging, or (None, None)
+    if economics could not be solved for this design.
+    """
+    eco = run_economics(sim, BASE_FULL_LOAD_HOURS, BASE_E1_C / 10.0)
+    if eco is None:
+        return None, None
+    exergoeco = eco["exergoeco"]
+    df_comp, df_mat1, df_mat2, df_non_mat = exergoeco.exergoeconomic_results(
+        print_results=False
+    )
+
+    # Merge df_mat1 (state + exergy) and df_mat2 (cost) on Connection so that
+    # all per-connection material info sits in one CSV. Drop duplicated
+    # columns (E, e^PH, ...).
+    dup_cols = [c for c in df_mat2.columns
+                if c in df_mat1.columns and c != "Connection"]
+    df_mat = df_mat1.merge(df_mat2.drop(columns=dup_cols),
+                           on="Connection", how="left")
+
+    df_comp.to_csv(os.path.join(out_dir, "exergoeco_components.csv"),
+                   index=False, float_format="%.4g")
+    df_mat.to_csv(os.path.join(out_dir, "exergoeco_connections_material.csv"),
+                  index=False, float_format="%.4g")
+    df_non_mat.to_csv(os.path.join(out_dir, "exergoeco_connections_nonmat.csv"),
+                       index=False, float_format="%.4g")
+    return eco["c_P"], eco["Z_sum"]
+
+
+# ── Main loop ───────────────────────────────────────────────────────────────
+
+def main(T_steam=None):
+    """Export per-design TESPy + exergoeconomic details for one T_steam case."""
+    if T_steam is None:
+        T_steam = T_STEAM_CASE_110
+    _set_paths_for_T_steam(T_steam)
+
+    if not os.path.exists(ENRICHED_CSV):
+        print(f"Could not find {ENRICHED_CSV}. "
+              f"Run case_steam_110.py and reclassify_modern.py first.")
+        sys.exit(1)
+    os.makedirs(DESIGNS_DIR, exist_ok=True)
+
+    df = pd.read_csv(ENRICHED_CSV)
+    designs = df[(df["status_modern"] == "OK")
+                 & (df["ls"].isin([0.30, 0.40, 0.50]))].copy()
+    designs = designs.sort_values(by=["f1", "f2", "ls", "T_src"]).reset_index(drop=True)
+    n = len(designs)
+    print(f"Exporting per-design TESPy details for {n} OK (modern) designs at "
+          f"LS ∈ {{0.30, 0.40, 0.50}} (T_steam = {T_steam:.0f} °C)\n")
+
+    n_ok = 0
+    n_fail = 0
+    n_eco_fail = 0
+    for i, design in designs.iterrows():
+        f1, f2 = design["f1"], design["f2"]
+        ls = float(design["ls"])
+        T_src = float(design["T_src"])
+        ls_pct = int(round(ls * 100))
+        tag = f"[{i+1:>3d}/{n}] {f1}/{f2:<6s} LS={ls_pct:>2d}% T_src={int(T_src):>2d}"
+
+        out_dir = os.path.join(DESIGNS_DIR, f"{f1}_{f2}",
+                               f"LS{ls_pct}_Tsrc{int(T_src)}")
+        os.makedirs(out_dir, exist_ok=True)
+
+        T34 = lift_share_to_T34(ls, T_src, T_steam=T_steam)
+        sim = simulate_hthp(
+            f1, f2,
+            T_evap_c2_override=T34,
+            T_source_in_override=T_src,
+            T_steam_override=T_steam,
+            source_mode="fixed_mass_flow",
+            skip_ommen_check=True,
+        )
+        if sim is None:
+            print(f"{tag}  SIM FAILED (skipped)")
+            n_fail += 1
+            continue
+
+        try:
+            conn_df = _connections_dataframe(sim)
+            conn_df.to_csv(os.path.join(out_dir, "connections.csv"), index=False)
+
+            comp_df = _components_dataframe(sim)
+            comp_df.to_csv(os.path.join(out_dir, "components.csv"), index=False)
+
+            title = (f"{f1}/{f2}, LS = {ls_pct}%, T_src = {int(T_src)} °C, "
+                     f"T_steam = 110 °C  |  COP = {sim['COP']:.2f}, "
+                     f"ε = {sim['epsilon']:.3f}")
+            _plot_qt(sim, os.path.join(out_dir, "qt_diagram.png"), title_extra=title)
+            _plot_logph(sim, os.path.join(out_dir, "logph_diagram.png"), title_extra=title)
+
+            c_P, Z_sum = _export_exergoeco_csvs(sim, out_dir)
+            if c_P is None:
+                n_eco_fail += 1
+
+            n_ok += 1
+            if (i + 1) % 12 == 0 or (i + 1) == n:
+                eco_str = (f"  c_P={c_P:.1f} EUR/GJ  Z={Z_sum:.2f} EUR/h"
+                            if c_P is not None else "  (eco failed)")
+                print(f"{tag}  ✓  COP={sim['COP']:.2f}{eco_str}  → {out_dir}")
+        except Exception as e:
+            print(f"{tag}  EXPORT FAILED: {e}")
+            n_fail += 1
+
+    print()
+    print("=" * 80)
+    print(f"Designs exported successfully: {n_ok}")
+    print(f"Designs failed (sim/export)   : {n_fail}")
+    print(f"Designs with eco failure      : {n_eco_fail}")
+    print(f"Output root                   : {DESIGNS_DIR}/")
+    print("Per design: connections.csv, components.csv, qt_diagram.png, "
+          "logph_diagram.png,")
+    print("           exergoeco_components.csv, "
+          "exergoeco_connections_material.csv,")
+    print("           exergoeco_connections_nonmat.csv")
+    print("=" * 80)
+
+
+if __name__ == "__main__":
+    main()

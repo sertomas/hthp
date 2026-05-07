@@ -18,36 +18,137 @@ RESULTS_DIR = os.path.join(BASE_DIR, "results")
 CACHE_DIR = os.path.join(RESULTS_DIR, "cache")
 SIM_CACHE_DIR = os.path.join(CACHE_DIR, "sims")
 SIM_INDEX_FILE = os.path.join(CACHE_DIR, "sim_index.json")
-HEATER_CACHE_FILE = os.path.join(CACHE_DIR, "heater.json")
 GAS_HEATER_CACHE_FILE = os.path.join(CACHE_DIR, "gas_heater.json")
 ANALYSIS_JSON_FILE = os.path.join(CACHE_DIR, "analysis.json")
 
 # ── Fluid combinations ──────────────────────────────────────────────────────
+# Cycle-2 fluids are restricted to hydrocarbons (R600a, R600). R717 was
+# considered for cycle 2 but excluded after analysis:
+#   1. R717 in cycle 2 condenses at T_steam + pinch ≈ 115 °C → p_high ≈ 71 bar,
+#      which sits above the Ommen 2015 R717-HP envelope (50 bar) and at the
+#      edge of modern commercial compressors (Vilter VSSH 76 bar). Cost data
+#      for R717-HP at this pressure is NDA in Ommen Table 4; the project uses
+#      a 1.5× engineering multiplier on R717-LP as a placeholder, introducing
+#      uncertainty into any economic ranking.
+#   2. Industrial demonstrators that pair R717 with a high-temperature top
+#      cycle universally use R717+R718 (steam) — Aneo Industry, AGO Energie,
+#      GEA Ammonia steam generator (IEA HPT Project 68 Table 2-1). There is
+#      no commercial precedent for R717+butane cascade.
+#   3. R717/R717 specifically is not a real cascade — same fluid in two loops
+#      offers no thermodynamic advantage over single-stage two-compression
+#      with intermediate-pressure vessel (economizer / flash tank). TESPy
+#      converges but the configuration would never be built.
+# R717 in cycle 1 (R717/R600, R717/R600a) is retained: cycle-1 R717 condenses
+# at the intermediate temperature T34, which for LS ≤ 0.50 stays below 28 bar
+# (R717-LP envelope, properly costed in Ommen Table 4).
+#
+# R744 (CO2) is intentionally NOT included. Two reasons:
+#  1. Compressor scope: Ommen 2015 Table 3 lists R744 capacity at 6-25 m³/h
+#     (an order of magnitude smaller than HC compressors at 5-280 m³/h).
+#     The cost correlation is calibrated for small machines, well below
+#     the suction volumetric flow required by an industrial steam-generating
+#     HTHP.
+#  2. Heat-sink mismatch: R744 transcritical wins on NPV in Ommen 2015 only
+#     for HIGH sink-temperature glide (≥ 40 K, e.g. district heating). Our
+#     sink is saturated steam at constant T — an isothermal sink — which
+#     wastes R744's gliding gas-cooler advantage. The transcritical
+#     plumbing in models.py (_is_transcritical, _R744_P_HIGH_BAR) is kept
+#     in place as a starting point for a possible single-stage R744
+#     follow-up study, but R744 is not in any active fluid list.
 FLUIDS_C1 = ["R290", "R1270", "R717"]
-FLUIDS_C2 = ["R600a", "R600", "R717"]
+FLUIDS_C2 = ["R600a", "R600"]
 
 # ── Base-case economic parameters ────────────────────────────────────────────
 BASE_FULL_LOAD_HOURS = 7500       # h/a (fixed, no sensitivity on this)
-BASE_E1_C = 18.0                  # ct/kWh
 
-# ── Alternative scenario parameters ─────────────────────────────────────────
-ALT_E1_C = 35.0                   # ct/kWh  (high electricity price)
+# Industrial electricity, medium consumer (20-70 GWh/a).
+# Full end-customer price including taxes, surcharges and grid fees.
+# Source: BDEW Strompreisanalyse (Bundesverband der Energie- und
+# Wasserwirtschaft), 2025 release. The 144 EUR/MWh row in the same table
+# applies to large industry (70-150 GWh/a); a steam-generating HTHP at
+# 1 MWth and 7500 h/a draws ~2.5 GWh_el/a, which sits inside the medium-
+# industry band → 159 EUR/MWh is the appropriate full-cost reference.
+BASE_E1_C = 159.0                 # EUR/MWh
 
 # ── Gas heater reference parameters ──────────────────────────────────────────
-BASE_GAS_C = 3.5                  # ct/kWh  (= 35 EUR/MWh)
+# Natural gas wholesale, Day-Ahead spot at the German THE virtual hub.
+# End-of-April 2026 reading. Source: BDEW gas market monitoring.
+# Industrial end-customer prices are typically wholesale + ~10-20 EUR/MWh
+# of grid/distribution fees, but this study mirrors Ommen (2015) which uses
+# bare market prices for both fuels (no industrial gas margin added).
+BASE_GAS_C = 47                  # EUR/MWh
+
+# ── CO2 emission price (gas-heater reference only) ────────────────────────────
+# Carbon cost added on top of the gas-fuel cost in run_economics_gas_heater.
+# Ommen et al. (2015) priced the gas burner on fuel only; we extend the
+# comparison with a carbon charge.
+# Source: Destatis, EU ETS / BEHG corridor 55-65 EUR/tCO2 valid from
+# 1 January 2026 (start of BEHG market-based phase, transitioning out of
+# the fixed-price regime). Midpoint adopted as the base case.
+# Set to 0 to reproduce the Ommen baseline.
+BASE_CO2_PRICE = 60.0            # EUR/tCO2
 
 # ── Sensitivity ranges ───────────────────────────────────────────────────────
-E1_C_RANGE = np.arange(10, 41, 2.5)  # ct/kWh
+E1_C_RANGE = np.arange(100, 201, 10.0)  # EUR/MWh — brackets BASE_E1_C = 159
 
-# ── Steam temperature (fixed boundary condition) ────────────────────────────
-P_WATER = 2  # bar
-T_STEAM = PropsSI("T", "P", P_WATER * 1e5, "Q", 0, "water") - 273.15  # ≈ 120.2 °C
+# ── ±50 % price sensitivity (Ommen 2015, Fig. 3) ─────────────────────────────
+# 2-D sweep of electricity and gas prices around their base values, in ±50 %
+# steps of 10 %. Used by the price_sensitivity_2d analysis & plot.
+PRICE_SENS_FRAC_RANGE = np.arange(-0.5, 0.51, 0.1)  # -50 % … +50 %
+
+# ── Steam temperature (sink boundary) ───────────────────────────────────────
+# Two industrial use cases studied: 100 °C (≈ atmospheric steam) and
+# 110 °C (≈ 1.4 bar steam). T_STEAM_DEFAULT is used by the main matrix
+# sweep. The smaller per-T_steam sensitivity sweep covers both values.
+T_STEAM_DEFAULT = 100.0  # °C
+T_STEAM_RANGE = [100.0, 110.0]  # °C
+T_STEAM = T_STEAM_DEFAULT  # backwards-compatible alias used by other modules
+P_WATER = PropsSI("P", "T", T_STEAM_DEFAULT + 273.15, "Q", 0, "water") / 1e5
+
+# ── Case study: steam at 110 °C, fixed Q_H ───────────────────────────────────
+# Pinned T_steam and nominal heating capacity used by case_steam_110.py. All
+# 9 fluid pairs are scaled to deliver the same Q_H so cross-design comparisons
+# (COP, η_Lorenz, V̇ vs Ommen envelope) share a common denominator. 1 MWth
+# sits inside the dense part of the IEA HPT Annex 58 (2023) supplier capacity
+# distribution (0.5–5 MWth) and lands within Ommen 2015 V̇ tolerance for most
+# fluid pairs — out-of-envelope cases are flagged, not rejected.
+T_STEAM_CASE_110 = 110.0      # °C  (legacy alias; prefer T_STEAM_CASE_DEFAULT)
+T_STEAM_CASE_DEFAULT = 110.0  # °C  used when stage main() is called without
+                              #     a T_steam argument
+Q_H_NOMINAL_KW = 1000.0       # kW heating output
+CAPACITY_MODE_DEFAULT = "fixed_Q_H"   # only mode currently implemented
+
+# Run main.py over each of these temperatures when --t-steam=all (default).
+# Output lands under results/case_steam_<int(T)>/ for each one.
+T_STEAMS_TO_RUN = [100.0, 110.0, 120.0]
+# Folder where the cross-T_steam comparison plots are written.
+T_STEAM_COMPARE_DIR_NAME = "case_steam_compare"
+
+
+def p_water_for_T_steam(T_steam_degC):
+    """Saturation pressure of water at the given steam temperature [bar]."""
+    return PropsSI("P", "T", T_steam_degC + 273.15, "Q", 0, "water") / 1e5
+
+
+def case_results_dir(T_steam):
+    """Return the per-T_steam case-study output directory.
+
+    All six case-study stages share this naming scheme so that
+    `results/case_steam_100/`, `results/case_steam_110/` and
+    `results/case_steam_120/` sit side-by-side without collision.
+    """
+    return os.path.join(RESULTS_DIR, f"case_steam_{int(T_steam)}")
+
+
+def t_steam_compare_dir():
+    """Return the cross-T_steam comparison output directory."""
+    return os.path.join(RESULTS_DIR, T_STEAM_COMPARE_DIR_NAME)
 
 # ── Lift share sensitivity ─────────────────────────────────────────────────
 #    Fraction of the total temperature lift (T_steam - T_air_in) handled by
 #    the lower cycle.  T34 = T_air_in + lift_share * (T_steam - T_air_in).
 LIFT_SHARE_RANGE = [0.30, 0.40, 0.50, 0.60, 0.70]  # lower / upper
-LIFT_SHARE_DEFAULT = 0.50                             # base case (50/50)
+LIFT_SHARE_DEFAULT = 0.50                            # base case (50/50)
 
 # ── T_source_in sensitivity ────────────────────────────────────────────────
 T_SOURCE_IN_RANGE = list(range(20, 61, 10))  # °C (source water inlet temperature)
@@ -57,14 +158,17 @@ T_SOURCE_IN_DEFAULT = 20                     # °C
 #    Two modes for defining source water boundary conditions:
 #    - "fixed_delta_T": fix T_in and T_out = T_in - SOURCE_DELTA_T (m free)
 #    - "fixed_mass_flow": fix T_in and m = SOURCE_MASS_FLOW (T_out free)
-SOURCE_DELTA_T = 10                          # K (fixed for all T_source_in cases)
-SOURCE_MASS_FLOW = 40.0                      # kg/s (base case for fixed_mass_flow mode)
+SOURCE_DELTA_T = 10                          # K (used only in fixed_delta_T mode)
+SOURCE_MASS_FLOW = 30.0                      # kg/s (default for fixed_mass_flow mode;
+                                              # ≈ mean ṁ_src observed under the previous
+                                              # ΔT=10 K mode, so designs span similar
+                                              # operating points but with T_src,out free)
 SOURCE_MASS_FLOW_RANGE = [20, 30, 40, 50]   # kg/s (sensitivity range)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def lift_share_to_T34(lift_share, T_source_in):
+def lift_share_to_T34(lift_share, T_source_in, T_steam=None):
     """
     Compute the cycle-2 evaporation temperature T34 from lift share.
 
@@ -74,13 +178,16 @@ def lift_share_to_T34(lift_share, T_source_in):
         Fraction of total lift handled by the lower cycle (0–1).
     T_source_in : float
         Source water inlet temperature [deg C].
+    T_steam : float, optional
+        Sink steam temperature [deg C]. Defaults to ``T_STEAM_DEFAULT``.
 
     Returns
     -------
     float
         Evaporation temperature of cycle 2 (T34) [deg C].
     """
-    return T_source_in + lift_share * (T_STEAM - T_source_in)
+    T_steam_val = T_STEAM_DEFAULT if T_steam is None else T_steam
+    return T_source_in + lift_share * (T_steam_val - T_source_in)
 
 
 def ls_label(lift_share):

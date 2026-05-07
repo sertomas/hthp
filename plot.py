@@ -34,6 +34,7 @@ from config import (
     SOURCE_MASS_FLOW_RANGE,
     T_SOURCE_IN_DEFAULT,
     T_SOURCE_IN_RANGE,
+    T_STEAM_RANGE,
     lift_share_to_T34,
     ls_label,
 )
@@ -81,7 +82,6 @@ def _valid_scenario_keys(analysis):
 def print_summary_table(analysis):
     """Print a formatted table of base-case results to stdout."""
     results = analysis["base_results"]
-    heater = analysis["heater_ref"]
 
     rows = []
     for (f1, f2), res in results.items():
@@ -102,17 +102,6 @@ def print_summary_table(analysis):
                 "Z_sum [EUR/h]", "E_F [kW]", "E_P [kW]", "E_D [kW]",
             ]})
         rows.append(row)
-
-    rows.append({
-        "Cycle 1": "Heater", "Cycle 2": "(el. ref)",
-        "COP [-]": round(heater["COP"], 3),
-        "epsilon [%]": round(heater["epsilon"] * 100, 2),
-        "c_P [EUR/GJ]": round(heater["c_P"], 2),
-        "Z_sum [EUR/h]": round(heater["Z_sum"], 2),
-        "E_F [kW]": round(heater["E_F"] / 1000, 2),
-        "E_P [kW]": round(heater["E_P"] / 1000, 2),
-        "E_D [kW]": round(heater["E_D"] / 1000, 2),
-    })
 
     gas_heater = analysis["gas_heater_ref"]
     rows.append({
@@ -164,7 +153,6 @@ def print_summary_table(analysis):
 def plot_comparison_bars(analysis):
     """Grouped bar chart of COP, epsilon, c_P and Z_sum for all fluid combos."""
     results = analysis["base_results"]
-    heater = analysis["heater_ref"]
     gas_heater = analysis["gas_heater_ref"]
     x = np.arange(len(FLUIDS_C1))
     width = 0.25
@@ -186,8 +174,6 @@ def plot_comparison_bars(analysis):
                 if results.get((FLUIDS_C1[j], f2)) is None:
                     ax.text(x[j] + i * width, 0, "N/A", ha="center", va="bottom", fontsize=8, color="red")
 
-        ref_val = heater[key] * 100 if key == "epsilon" else heater[key]
-        ax.axhline(y=ref_val, color="red", linestyle="--", linewidth=1.5, label="El. heater (ref)")
         gas_ref_val = gas_heater[key] * 100 if key == "epsilon" else gas_heater[key]
         ax.axhline(y=gas_ref_val, color="green", linestyle="--", linewidth=1.5, label="Gas heater (ref)")
         ax.set_ylabel(ylabel)
@@ -247,7 +233,7 @@ def plot_comparison_heatmaps(analysis):
 
 # ── Sensitivity line plots ───────────────────────────────────────────────────
 
-def _sensitivity_line_plot(x_range, data, heater_data, combos, xlabel, ylabel, title, path,
+def _sensitivity_line_plot(x_range, data, combos, xlabel, ylabel, title, path,
                            gas_heater_data=None):
     """Generic line plot for a 1-D sensitivity sweep."""
     combo_colors = plt.cm.tab10(np.linspace(0, 1, len(combos)))
@@ -255,7 +241,6 @@ def _sensitivity_line_plot(x_range, data, heater_data, combos, xlabel, ylabel, t
     for i, key in enumerate(combos):
         ax.plot(x_range, data[key], marker="o", markersize=4,
                 color=combo_colors[i], label=f"{key[0]}/{key[1]}")
-    ax.plot(x_range, heater_data, linestyle="--", linewidth=2, color="red", label="El. heater (ref)")
     if gas_heater_data is not None:
         ax.plot(x_range, gas_heater_data, linestyle="--", linewidth=2, color="green", label="Gas heater (ref)")
     ax.set_xlabel(xlabel)
@@ -273,7 +258,6 @@ def plot_sensitivity_e1c(analysis):
     _sensitivity_line_plot(
         E1_C_RANGE,
         analysis["sensitivity_e1c"],
-        analysis["heater_sens_e1c"],
         analysis["valid_combos"],
         "Electricity price $c_{e1}$ [ct/kWh]",
         "$c_P$ [EUR/GJ]",
@@ -310,7 +294,6 @@ def plot_sensitivity_lift_share_COP(analysis):
 def plot_sensitivity_lift_share_cP(analysis):
     """c_P vs lift share for all valid fluid combinations."""
     valid = analysis["valid_combos"]
-    heater = analysis["heater_ref"]
     gas_heater = analysis["gas_heater_ref"]
     sens = analysis["sensitivity_lift_share"]
     combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
@@ -321,7 +304,6 @@ def plot_sensitivity_lift_share_cP(analysis):
                 for ls in LIFT_SHARE_RANGE]
         ax.plot(_LS_PCT, vals, marker="s", markersize=5,
                 color=combo_colors[i], label=f"{f1}/{f2}")
-    ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater (ref)")
     ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater (ref)")
     ax.set_xlabel("Lower cycle lift share [%]")
     ax.set_ylabel("$c_P$ [EUR/GJ]")
@@ -415,7 +397,6 @@ def plot_sensitivity_lift_share_heatmap(analysis):
 def plot_sensitivity_e1c_by_lift_share(analysis):
     """c_P vs electricity price — one subplot per lift share value."""
     sens = analysis["sensitivity_e1c_by_lift_share"]
-    heater = analysis["heater_sens_e1c"]
     gas_heater = analysis["gas_heater_sens_e1c"]
     all_possible = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
     color_map = {c: plt.cm.tab10(i / len(all_possible)) for i, c in enumerate(all_possible)}
@@ -434,8 +415,6 @@ def plot_sensitivity_e1c_by_lift_share(analysis):
         for f1, f2 in combos:
             ax.plot(E1_C_RANGE, sens[ls][(f1, f2)],
                     marker="s", markersize=3, color=color_map[(f1, f2)], label=f"{f1}/{f2}")
-        ax.plot(E1_C_RANGE, heater,
-                linestyle="--", linewidth=2, color="red", label="El. heater (ref)")
         ax.plot(E1_C_RANGE, gas_heater,
                 linestyle="--", linewidth=2, color="green", label="Gas heater (ref)")
         ax.set_xlabel("Electricity price $c_{e1}$ [ct/kWh]")
@@ -481,7 +460,6 @@ def plot_sensitivity_T_source_in_COP(analysis):
 def plot_sensitivity_T_source_in_cP(analysis):
     """c_P vs T_source_in for all valid fluid combinations."""
     valid = analysis["valid_combos"]
-    heater = analysis["heater_ref"]
     gas_heater = analysis["gas_heater_ref"]
     sens = analysis["sensitivity_T_source_in"]
     combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
@@ -492,7 +470,6 @@ def plot_sensitivity_T_source_in_cP(analysis):
                 for T in T_SOURCE_IN_RANGE]
         ax.plot(T_SOURCE_IN_RANGE, vals, marker="s", markersize=5,
                 color=combo_colors[i], label=f"{f1}/{f2}")
-    ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater (ref)")
     ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater (ref)")
     ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
     ax.set_ylabel("$c_P$ [EUR/GJ]")
@@ -649,7 +626,6 @@ def plot_sensitivity_T_source_in_heatmap_by_lift_share(analysis):
 def plot_sensitivity_e1c_by_T_source_in(analysis):
     """c_P vs electricity price — one subplot per T_source_in value."""
     sens = analysis["sensitivity_e1c_by_T_source_in"]
-    heater = analysis["heater_sens_e1c"]
     gas_heater = analysis["gas_heater_sens_e1c"]
     all_possible = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
     color_map = {c: plt.cm.tab10(i / len(all_possible)) for i, c in enumerate(all_possible)}
@@ -669,8 +645,6 @@ def plot_sensitivity_e1c_by_T_source_in(analysis):
         for f1, f2 in combos:
             ax.plot(E1_C_RANGE, sens[T_src_val][(f1, f2)],
                     marker="s", markersize=3, color=color_map[(f1, f2)], label=f"{f1}/{f2}")
-        ax.plot(E1_C_RANGE, heater,
-                linestyle="--", linewidth=2, color="red", label="El. heater (ref)")
         ax.plot(E1_C_RANGE, gas_heater,
                 linestyle="--", linewidth=2, color="green", label="Gas heater (ref)")
         ax.set_xlabel("Electricity price $c_{e1}$ [ct/kWh]")
@@ -726,7 +700,6 @@ def plot_sensitivity_T_source_in_cP_fm(analysis):
     if not sens:
         return
 
-    heater = analysis["heater_ref"]
     gas_heater = analysis["gas_heater_ref"]
 
     all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
@@ -742,7 +715,6 @@ def plot_sensitivity_T_source_in_cP_fm(analysis):
                 for T in T_SOURCE_IN_RANGE]
         ax.plot(T_SOURCE_IN_RANGE, vals, marker="s", markersize=5,
                 color=combo_colors[i], label=f"{f1}/{f2}")
-    ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater (ref)")
     ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater (ref)")
     ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
     ax.set_ylabel("$c_P$ [EUR/GJ]")
@@ -836,7 +808,6 @@ def plot_comparison_modes_cP(analysis):
     if not sens_fm:
         return
 
-    heater = analysis["heater_ref"]
     gas_heater = analysis["gas_heater_ref"]
 
     all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
@@ -865,7 +836,6 @@ def plot_comparison_modes_cP(analysis):
 
     for ax, title in [(ax1, f"fixed $\\Delta T$ = {SOURCE_DELTA_T} K"),
                        (ax2, f"fixed $\\dot{{m}}$ = {SOURCE_MASS_FLOW} kg/s")]:
-        ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater (ref)")
         ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater (ref)")
         ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
         ax.set_ylabel("$c_P$ [EUR/GJ]")
@@ -927,7 +897,6 @@ def plot_sensitivity_mass_flow_cP(analysis):
     if not sens:
         return
 
-    heater = analysis["heater_ref"]
     gas_heater = analysis["gas_heater_ref"]
 
     all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
@@ -950,7 +919,6 @@ def plot_sensitivity_mass_flow_cP(analysis):
                     for T in T_SOURCE_IN_RANGE]
             ax.plot(T_SOURCE_IN_RANGE, vals, marker="s", markersize=5,
                     color=m_colors[j], label=f"$\\dot{{m}}$ = {m_val} kg/s")
-        ax.axhline(y=heater["c_P"], color="red", linestyle="--", linewidth=1.5, label="El. heater")
         ax.axhline(y=gas_heater["c_P"], color="green", linestyle="--", linewidth=1.5, label="Gas heater")
         ax.set_xlabel("$T_{\\mathrm{source,in}}$ [°C]")
         if idx == 0:
@@ -1047,7 +1015,7 @@ def plot_qt_diagrams(simulations, analysis):
             ax.grid(alpha=0.3)
 
         fig.tight_layout()
-        fig.savefig(_out_path(f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{T_src_val}", "QT_diagram.png"),
+        fig.savefig(_out_path(f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{int(T_src_val)}", "QT_diagram.png"),
                     dpi=150, bbox_inches="tight")
         plt.close(fig)
 
@@ -1119,9 +1087,179 @@ def plot_logph_diagrams(simulations, analysis):
             ax.set_title(f"{cycle_label}: {fluid}")
 
         fig.tight_layout()
-        fig.savefig(_out_path(f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{T_src_val}", "logph_diagram.png"),
+        fig.savefig(_out_path(f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{int(T_src_val)}", "logph_diagram.png"),
                     dpi=150, bbox_inches="tight")
         plt.close(fig)
+
+
+# ── T_steam sensitivity ─────────────────────────────────────────────────────
+
+def plot_sensitivity_T_steam(analysis):
+    """
+    COP / ε / c_P vs sink-steam temperature, at default LS / T_source_in.
+    One line per fluid combo; horizontal "gas heater" reference per T_steam.
+    """
+    sens = analysis.get("sensitivity_T_steam", {})
+    gas_T = analysis.get("gas_heater_T_steam", {})
+    if not sens:
+        print("  ! sensitivity_T_steam missing — re-run analyze.py.")
+        return
+
+    all_combos = [(f1, f2) for f1 in FLUIDS_C1 for f2 in FLUIDS_C2]
+    valid = [c for c in all_combos
+             if any(sens.get((c[0], c[1], T)) is not None for T in T_STEAM_RANGE)]
+    if not valid:
+        print("  ! No valid T_steam-sensitivity combos.")
+        return
+
+    metrics = [
+        ("COP", "COP [-]"),
+        ("epsilon", "$\\varepsilon$ [%]"),
+        ("c_P", "$c_P$ [EUR/GJ]"),
+    ]
+    combo_colors = plt.cm.tab10(np.linspace(0, 1, len(valid)))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig.suptitle(f"$c_P$, COP, $\\varepsilon$ vs sink-steam temperature "
+                 f"(LS = {ls_label(LIFT_SHARE_DEFAULT)}%, "
+                 f"$T_{{src,in}}$ = {T_SOURCE_IN_DEFAULT} °C, "
+                 f"{BASE_E1_C:.0f} EUR/MWh el., "
+                 f"{BASE_FULL_LOAD_HOURS} h/a)",
+                 fontsize=13, fontweight="bold")
+
+    for ax, (key, ylabel) in zip(axes, metrics):
+        for i, (f1, f2) in enumerate(valid):
+            vals = []
+            for T in T_STEAM_RANGE:
+                res = sens.get((f1, f2, T))
+                if res is None:
+                    vals.append(np.nan)
+                    continue
+                v = res[key]
+                if key == "epsilon":
+                    v *= 100
+                vals.append(v)
+            ax.plot(T_STEAM_RANGE, vals, marker="o", markersize=6,
+                    color=combo_colors[i], label=f"{f1}/{f2}")
+
+        # Gas heater reference (only meaningful for c_P)
+        if key == "c_P" and gas_T:
+            T_sorted = sorted(gas_T.keys())
+            cps = [gas_T[T]["c_P"] for T in T_sorted]
+            ax.plot(T_sorted, cps, linestyle="--", linewidth=2, color="green",
+                    label="Gas heater (ref)")
+
+        ax.set_xlabel("$T_{\\mathrm{steam}}$ [°C]")
+        ax.set_ylabel(ylabel)
+        ax.legend(fontsize=8, ncol=1)
+        ax.grid(alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(_out_path("overview", "sensitivity_T_steam.png"),
+                dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ── ±50 % electricity / gas price 2-D sensitivity ────────────────────────────
+
+def plot_price_sensitivity_2d(analysis):
+    """
+    2-D contour map of c_P vs (electricity price, gas price), each varied
+    by ±50 % of the base value. One subplot per valid HTHP fluid combination.
+
+    Mirrors Ommen et al. (2015), Fig. 3a:
+    - x-axis: Δc_el [%] (electricity price deviation from base)
+    - y-axis: Δc_gas [%] (gas price deviation from base)
+    - colour: c_P_HTHP [EUR/GJ]
+    - black contour: break-even line where c_P_HTHP = c_P_gas_heater
+      (above this line the HTHP wins; below it gas heating is cheaper).
+    """
+    ps = analysis.get("price_sens_2d")
+    if ps is None:
+        print("  ! price_sens_2d data missing — re-run analyze.py to generate it.")
+        return
+
+    frac_pct = np.array(ps["frac_range"]) * 100.0  # -50 … +50 %
+    hthp_cP = ps["hthp_cP"]                        # {(f1, f2): [c_P over e1c grid]}
+    gas_cP = np.array(ps["gas_heater_cP"])         # length n, indexed by gas price
+
+    combos = sorted(hthp_cP.keys())
+    if not combos:
+        print("  ! No valid HTHP combos for 2-D price sensitivity.")
+        return
+
+    n = len(combos)
+    ncols = 3
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5.5 * ncols, 4.8 * nrows),
+                             squeeze=False)
+    fig.suptitle("$c_P$ sensitivity to ±50 % electricity & gas prices "
+                 f"(base: {ps['base_e1c']:.0f} EUR/MWh el., "
+                 f"{ps['base_gas']:.0f} EUR/MWh gas)",
+                 fontsize=14, fontweight="bold")
+
+    # Build the 2-D grid: c_P_HTHP depends only on c_el, replicated along c_gas axis.
+    # Shape convention: Z[i, j] where i = gas-price index (y), j = el-price index (x).
+    X, Y = np.meshgrid(frac_pct, frac_pct)  # X = Δc_el%, Y = Δc_gas%
+    gas_field = np.tile(gas_cP[:, None], (1, len(frac_pct)))
+
+    # Global colour scale across all combos so subplots are directly comparable.
+    all_vals = np.concatenate([np.array(hthp_cP[c]) for c in combos])
+    vmin = float(np.nanmin(all_vals))
+    vmax = float(np.nanmax(all_vals))
+    levels = np.linspace(vmin, vmax, 12)
+
+    cf = None
+    axes_flat = axes.flat
+    for idx, (f1, f2) in enumerate(combos):
+        ax = axes_flat[idx]
+        cps = np.array(hthp_cP[(f1, f2)])
+        Z = np.tile(cps[None, :], (len(frac_pct), 1))  # broadcast over c_gas axis
+
+        # Filled contour of HTHP c_P with shared (vmin, vmax)
+        cf = ax.contourf(X, Y, Z, levels=levels, cmap="viridis",
+                         vmin=vmin, vmax=vmax, extend="both")
+
+        # Break-even line: HTHP c_P == gas-heater c_P
+        diff = Z - gas_field
+        try:
+            ax.contour(X, Y, diff, levels=[0.0], colors="white", linewidths=2.0)
+            ax.contour(X, Y, diff, levels=[0.0], colors="black", linewidths=1.0,
+                       linestyles="--")
+        except ValueError:
+            pass  # no break-even crossing within the grid
+
+        # Mark base point (0, 0)
+        ax.plot(0, 0, marker="o", color="red", markersize=8,
+                markeredgecolor="white", zorder=5)
+
+        ax.axhline(0, color="gray", linewidth=0.5, alpha=0.5)
+        ax.axvline(0, color="gray", linewidth=0.5, alpha=0.5)
+        ax.set_xlabel("$\\Delta c_{el}$ [%]")
+        ax.set_ylabel("$\\Delta c_{gas}$ [%]")
+        ax.set_title(f"{f1}/{f2}")
+
+    # Hide unused axes
+    for idx in range(n, nrows * ncols):
+        axes_flat[idx].set_visible(False)
+
+    # Single shared colourbar on the right
+    fig.tight_layout(rect=[0, 0, 0.92, 0.96])
+    cbar_ax = fig.add_axes([0.94, 0.10, 0.015, 0.80])
+    fig.colorbar(cf, cax=cbar_ax, label="$c_P^{HTHP}$ [EUR/GJ]")
+
+    # Add a legend entry for the break-even line on the first axis
+    from matplotlib.lines import Line2D
+    legend_handles = [
+        Line2D([0], [0], color="black", linestyle="--", linewidth=1,
+               label="break-even ($c_P^{HTHP}=c_P^{gas}$)"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="red",
+               markeredgecolor="white", markersize=8, label="base prices"),
+    ]
+    axes_flat[0].legend(handles=legend_handles, fontsize=8, loc="upper left")
+
+    fig.savefig(_out_path("overview", "price_sensitivity_2d.png"),
+                dpi=150, bbox_inches="tight")
+    plt.close(fig)
 
 
 # ── Generate all ─────────────────────────────────────────────────────────────
@@ -1173,6 +1311,10 @@ def generate_all_plots(analysis, simulations):
     plot_sensitivity_mass_flow_cP(analysis)
     print("  Mass flow sensitivity: epsilon ...")
     plot_sensitivity_mass_flow_epsilon(analysis)
+    print("  ±50 % price 2-D sensitivity ...")
+    plot_price_sensitivity_2d(analysis)
+    print("  T_steam sensitivity ...")
+    plot_sensitivity_T_steam(analysis)
     # Per-scenario diagrams
     print("  Q-T diagrams ...")
     plot_qt_diagrams(simulations, analysis)

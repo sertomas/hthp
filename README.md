@@ -145,16 +145,15 @@ All tuneable parameters live in `config.py`:
 | `FLUIDS_C1` | `["R290", "R1270", "R717"]` | Cycle-1 refrigerants |
 | `FLUIDS_C2` | `["R600a", "R600", "R717"]` | Cycle-2 refrigerants |
 | `BASE_FULL_LOAD_HOURS` | 5500 h/a | Base-case operating hours |
-| `BASE_E1_C` | 18.0 ct/kWh | Base-case electricity price |
-| `ALT_E1_C` | 35.0 ct/kWh | High electricity price scenario |
-| `ALT_FULL_LOAD_HOURS` | 8000 h/a | High utilisation scenario |
-| `BASE_GAS_C` | 3.5 ct/kWh | Base-case gas price |
+| `BASE_E1_C` | 159 EUR/MWh | Industrial electricity, medium consumer (20–70 GWh/a), full end-customer price 2025 — BDEW |
+| `BASE_GAS_C` | 47 EUR/MWh | Natural gas wholesale, Day-Ahead spot at German THE hub, end-April 2026 — BDEW |
+| `BASE_CO2_PRICE` | 60 EUR/tCO2 | EU ETS / BEHG corridor 55–65 EUR/tCO2, midpoint, valid from 2026-01-01 — Destatis |
 | `LIFT_SHARE_RANGE` | [0.30, 0.40, 0.50, 0.60, 0.70] | Lower-cycle lift share fractions |
 | `LIFT_SHARE_DEFAULT` | 0.50 | Base-case lift share (50/50) |
 | `T_SOURCE_IN_RANGE` | [20, 25, ..., 60] °C | Source water inlet temperature sensitivity values |
 | `T_SOURCE_IN_DEFAULT` | 20 °C | Base-case source water inlet temperature |
 | `FULL_LOAD_HOURS_RANGE` | 2000–8500, step 500 | Hours sweep range |
-| `E1_C_RANGE` | 10–40, step 2.5 ct/kWh | Electricity price sweep range |
+| `E1_C_RANGE` | 100–200, step 10 EUR/MWh | Electricity price sweep range (brackets `BASE_E1_C = 159`) |
 
 Changing a parameter in `config.py` and re-running the appropriate stage is all
 that is needed — no code modifications required.
@@ -202,8 +201,11 @@ Cost correlations and exergoeconomic analysis:
 - **`run_economics_heater(sim, full_load_hours, e1_c_ct_kwh)`**:
   Simplified cost balance for the electrical heater reference case.
 
-- **`run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh)`**:
-  Simplified cost balance for the gas heater reference case.
+- **`run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh, co2_price_eur_per_t=0.0)`**:
+  Simplified cost balance for the gas heater reference case. Optional
+  `co2_price_eur_per_t` adds an EU ETS-style carbon charge on top of the
+  fuel cost, using the CO2 mass flow returned by `simulate_gas_heater`
+  (computed from the TESPy combustion-chamber CH4 input via stoichiometry).
 
 ### `simulate.py`
 

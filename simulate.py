@@ -26,7 +26,6 @@ from config import (
     FLUIDS_C1,
     FLUIDS_C2,
     GAS_HEATER_CACHE_FILE,
-    HEATER_CACHE_FILE,
     LIFT_SHARE_DEFAULT,
     LIFT_SHARE_RANGE,
     NumpyEncoder,
@@ -36,12 +35,14 @@ from config import (
     SOURCE_MASS_FLOW_RANGE,
     T_SOURCE_IN_DEFAULT,
     T_SOURCE_IN_RANGE,
+    T_STEAM_DEFAULT,
+    T_STEAM_RANGE,
     lift_share_to_T34,
     sim_cache_folder,
     sim_key_to_str,
     str_to_sim_key,
 )
-from models import reconstruct_ean, simulate_gas_heater, simulate_heater, simulate_hthp
+from models import reconstruct_ean, simulate_gas_heater, simulate_hthp
 
 logging.basicConfig(level=logging.WARNING)
 logging.disable(logging.CRITICAL)
@@ -50,6 +51,61 @@ logging.disable(logging.CRITICAL)
 def _fm_index_file(m_val):
     """Return the sim-index path for a given fixed mass flow value."""
     return os.path.join(CACHE_DIR, f"sim_index_fm_{int(m_val)}.json")
+
+
+T_STEAM_INDEX_FILE = os.path.join(CACHE_DIR, "sim_index_T_steam.json")
+GAS_HEATER_T_STEAM_CACHE_FILE = os.path.join(CACHE_DIR, "gas_heater_T_steam.json")
+
+
+def _t_steam_folder(f1, f2, T_steam):
+    """Cache folder for the T_steam-sensitivity sweep at default LS / T_src."""
+    return os.path.join(SIM_CACHE_DIR, f"{f1}_{f2}", f"T_steam_{int(T_steam)}")
+
+
+def _save_T_steam_dict(hthp_T_steam):
+    """Save the T_steam sweep results, keyed by (f1, f2, T_steam)."""
+    index = {}
+    for (f1, f2, T_steam), sim in hthp_T_steam.items():
+        folder = _t_steam_folder(f1, f2, T_steam)
+        str_key = f"{f1}|{f2}|{T_steam}"
+
+        if sim is None:
+            index[str_key] = {"status": "failed", "folder": folder}
+            continue
+
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "exerpy_data.json"), "w") as f:
+            json.dump(sim["exerpy_data"], f, cls=NumpyEncoder, indent=2)
+        scalars = {k: v for k, v in sim.items() if k not in ("ean", "exerpy_data")}
+        with open(os.path.join(folder, "scalars.json"), "w") as f:
+            json.dump(scalars, f, cls=NumpyEncoder, indent=2)
+        index[str_key] = {"status": "ok", "folder": folder}
+
+    with open(T_STEAM_INDEX_FILE, "w") as f:
+        json.dump(index, f, indent=2)
+
+
+def _load_T_steam_dict():
+    """Load the T_steam sweep results into a (f1, f2, T_steam) → sim dict."""
+    if not os.path.exists(T_STEAM_INDEX_FILE):
+        return {}
+    with open(T_STEAM_INDEX_FILE) as f:
+        index = json.load(f)
+    out = {}
+    for str_key, meta in index.items():
+        f1, f2, T_steam = str_key.split("|")
+        key = (f1, f2, float(T_steam))
+        if meta["status"] != "ok":
+            out[key] = None
+            continue
+        folder = meta["folder"]
+        with open(os.path.join(folder, "scalars.json")) as f:
+            sim = json.load(f)
+        sim["ean"] = reconstruct_ean(
+            os.path.join(folder, "exerpy_data.json"), sim["T_source_in"]
+        )
+        out[key] = sim
+    return out
 
 
 # ── Core helpers ─────────────────────────────────────────────────────────────
@@ -108,11 +164,8 @@ def run_all_simulations(
     dict
         ``"hthp"`` — fixed_delta_T results;
         ``"hthp_fm"`` — ``{m_val: {(f1, f2, ls, T_src): sim, ...}}``;
-        ``"heater"`` / ``"gas_heater"`` — reference cases.
+        ``"gas_heater"`` — gas heater reference case.
     """
-    print("  Simulating: Electrical Heater (reference) ...")
-    heater = simulate_heater()
-
     print("  Simulating: Gas Heater (reference) ...")
     gas_heater = simulate_gas_heater()
 
@@ -129,8 +182,37 @@ def run_all_simulations(
             m_source=m_val,
         )
 
+    # T_steam sensitivity at default LS / T_source_in. One small extra sweep
+    # (len(T_STEAM_RANGE) × n_fluids combinations) plus one gas-heater
+    # reference per T_steam — keeps the main matrix size unchanged.
+    print(f"\n--- T_steam sensitivity (LS = {LIFT_SHARE_DEFAULT}, "
+          f"T_src = {T_SOURCE_IN_DEFAULT} °C) ---")
+    hthp_T_steam = {}
+    gas_heater_T_steam = {}
+    for T_steam in T_STEAM_RANGE:
+        T34 = lift_share_to_T34(LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT,
+                                T_steam=T_steam)
+        for f1 in fluids_c1:
+            for f2 in fluids_c2:
+                tag = f"{f1}/{f2}  T_steam={T_steam:.0f}  T34={T34:.1f}"
+                print(f"  Simulating: {tag} ...")
+                sim = simulate_hthp(
+                    f1, f2,
+                    T_evap_c2_override=T34,
+                    T_source_in_override=T_SOURCE_IN_DEFAULT,
+                    source_mode="fixed_delta_T",
+                    T_steam_override=T_steam,
+                )
+                hthp_T_steam[(f1, f2, T_steam)] = sim
+        print(f"  Simulating: Gas Heater ref @ T_steam={T_steam:.0f} ...")
+        gas_heater_T_steam[T_steam] = simulate_gas_heater(
+            T_steam_override=T_steam
+        )
+
     return {"hthp": hthp, "hthp_fm": hthp_fm,
-            "heater": heater, "gas_heater": gas_heater}
+            "gas_heater": gas_heater,
+            "hthp_T_steam": hthp_T_steam,
+            "gas_heater_T_steam": gas_heater_T_steam}
 
 
 def run_single_simulation(f1, f2, lift_share=LIFT_SHARE_DEFAULT,
@@ -244,13 +326,17 @@ def save_simulations(data):
         sm = f"fixed_mass_flow_m{int(m_val)}"
         _save_hthp_dict(hthp_m, _fm_index_file(m_val), source_mode=sm)
 
-    # Heater
-    with open(HEATER_CACHE_FILE, "w") as f:
-        json.dump(data["heater"], f, cls=NumpyEncoder, indent=2)
-
-    # Gas heater
+    # Gas heater (default T_steam)
     with open(GAS_HEATER_CACHE_FILE, "w") as f:
         json.dump(data["gas_heater"], f, cls=NumpyEncoder, indent=2)
+
+    # T_steam sweep + per-T_steam gas-heater references
+    if "hthp_T_steam" in data:
+        _save_T_steam_dict(data["hthp_T_steam"])
+    if "gas_heater_T_steam" in data:
+        gh_serial = {str(T): v for T, v in data["gas_heater_T_steam"].items()}
+        with open(GAS_HEATER_T_STEAM_CACHE_FILE, "w") as f:
+            json.dump(gh_serial, f, cls=NumpyEncoder, indent=2)
 
     print(f"Simulations saved -> {SIM_CACHE_DIR}")
 
@@ -273,15 +359,21 @@ def load_simulations():
         if os.path.exists(idx):
             hthp_fm[m_val] = _load_hthp_dict(idx)
 
-    with open(HEATER_CACHE_FILE) as f:
-        heater = json.load(f)
-
     with open(GAS_HEATER_CACHE_FILE) as f:
         gas_heater = json.load(f)
 
+    hthp_T_steam = _load_T_steam_dict()
+    gas_heater_T_steam = {}
+    if os.path.exists(GAS_HEATER_T_STEAM_CACHE_FILE):
+        with open(GAS_HEATER_T_STEAM_CACHE_FILE) as f:
+            raw = json.load(f)
+        gas_heater_T_steam = {float(k): v for k, v in raw.items()}
+
     print(f"Simulations loaded <- {SIM_CACHE_DIR}")
     return {"hthp": hthp, "hthp_fm": hthp_fm,
-            "heater": heater, "gas_heater": gas_heater}
+            "gas_heater": gas_heater,
+            "hthp_T_steam": hthp_T_steam,
+            "gas_heater_T_steam": gas_heater_T_steam}
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────

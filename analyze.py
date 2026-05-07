@@ -20,6 +20,7 @@ import numpy as np
 
 from config import (
     ANALYSIS_JSON_FILE,
+    BASE_CO2_PRICE,
     BASE_E1_C,
     BASE_FULL_LOAD_HOURS,
     BASE_GAS_C,
@@ -29,14 +30,16 @@ from config import (
     LIFT_SHARE_DEFAULT,
     LIFT_SHARE_RANGE,
     NumpyEncoder,
+    PRICE_SENS_FRAC_RANGE,
     RESULTS_DIR,
     SOURCE_MASS_FLOW,
     SOURCE_MASS_FLOW_RANGE,
     T_SOURCE_IN_DEFAULT,
     T_SOURCE_IN_RANGE,
+    T_STEAM_RANGE,
     lift_share_to_T34,
 )
-from economics import run_economics, run_economics_gas_heater, run_economics_heater
+from economics import run_economics, run_economics_gas_heater
 from simulate import load_simulations
 
 
@@ -50,9 +53,14 @@ def _out_path(*parts):
 
 
 def _scenario_folder(f1, f2, ls, T_source_in):
-    """Return the two-level folder path for a specific scenario."""
+    """Return the two-level folder path for a specific scenario.
+
+    ``int(T_source_in)`` mirrors :func:`config.sim_cache_folder` so that the
+    folder name is stable across runs — without the cast, a JSON roundtrip
+    converts ``20`` to ``20.0`` and produces a duplicate sibling directory.
+    """
     ls_pct = int(round(ls * 100))
-    return (f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{T_source_in}")
+    return (f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{int(T_source_in)}")
 
 
 # ── Main analysis routine ───────────────────────────────────────────────────
@@ -73,25 +81,11 @@ def run_all_analysis(simulations):
     """
     hthp = simulations["hthp"]
     hthp_fm = simulations.get("hthp_fm", {})
-    heater_sim = simulations["heater"]
     gas_heater_sim = simulations["gas_heater"]
 
-    # ── Heater reference ─────────────────────────────────────────────────
-    heater_base = run_economics_heater(heater_sim, BASE_FULL_LOAD_HOURS, BASE_E1_C)
-    heater_ref = {
-        "c_P": heater_base["c_P"],
-        "Z_sum": heater_base["Z_sum"],
-        "COP": heater_sim["COP"],
-        "epsilon": heater_sim["epsilon"],
-        "E_F": heater_sim["E_F"],
-        "E_P": heater_sim["E_P"],
-        "E_D": heater_sim["E_D"],
-    }
-    print(f"  Heater (ref): COP={heater_ref['COP']:.3f}  "
-          f"epsilon={heater_ref['epsilon']:.4f}  c_P={heater_ref['c_P']:.2f}")
-
     # ── Gas heater reference ─────────────────────────────────────────────
-    gas_heater_base = run_economics_gas_heater(gas_heater_sim, BASE_FULL_LOAD_HOURS, BASE_GAS_C)
+    gas_heater_base = run_economics_gas_heater(gas_heater_sim, BASE_FULL_LOAD_HOURS, BASE_GAS_C,
+                                                co2_price_eur_per_t=BASE_CO2_PRICE)
     gas_heater_ref = {
         "c_P": gas_heater_base["c_P"],
         "Z_sum": gas_heater_base["Z_sum"],
@@ -104,12 +98,12 @@ def run_all_analysis(simulations):
     print(f"  Gas Heater (ref): COP={gas_heater_ref['COP']:.3f}  "
           f"epsilon={gas_heater_ref['epsilon']:.4f}  c_P={gas_heater_ref['c_P']:.2f}")
 
-    # ── Heater sensitivity: c_P vs electricity price ─────────────────────
-    heater_sens_e1c = []
-    gas_heater_sens_e1c_val = run_economics_gas_heater(gas_heater_sim, BASE_FULL_LOAD_HOURS, BASE_GAS_C)["c_P"]
+    # ── Gas heater sensitivity: c_P vs electricity price ─────────────────
+    # Gas heater c_P depends only on the gas price (retrofit ⇒ Z = 0), so the
+    # curve is flat across the electricity-price sweep.
+    gas_heater_sens_e1c_val = run_economics_gas_heater(gas_heater_sim, BASE_FULL_LOAD_HOURS, BASE_GAS_C,
+                                                        co2_price_eur_per_t=BASE_CO2_PRICE)["c_P"]
     gas_heater_sens_e1c = [gas_heater_sens_e1c_val] * len(E1_C_RANGE)
-    for e1c in E1_C_RANGE:
-        heater_sens_e1c.append(run_economics_heater(heater_sim, BASE_FULL_LOAD_HOURS, e1c)["c_P"])
 
     # ── Base-case results (default lift share, default T_source_in) ───────
     base_results = {}
@@ -362,6 +356,86 @@ def run_all_analysis(simulations):
                         "m_source": sim.get("m_source"),
                     }
 
+    # ── ±50 % electricity / gas price 2-D sensitivity ─────────────────────
+    # Mirrors Ommen et al. (2015), Fig. 3a/b: vary c_el and c_gas around their
+    # base values in [-50 %, +50 %] and record c_P for HTHP combos and the
+    # gas-heater reference. Used downstream to plot a contour map and the
+    # break-even (c_P_HTHP = c_P_gas) curve.
+    print("  ±50 % price 2-D sensitivity ...")
+    e1c_grid = [BASE_E1_C * (1 + f) for f in PRICE_SENS_FRAC_RANGE]
+    gas_grid = [BASE_GAS_C * (1 + f) for f in PRICE_SENS_FRAC_RANGE]
+
+    # Gas heater c_P depends only on c_gas (Z = 0 ⇒ no electricity term).
+    # CO2 charge is held fixed at BASE_CO2_PRICE across the gas-price sweep
+    # so the curve isolates the gas-fuel sensitivity.
+    gas_heater_grid_2d = []
+    for gc in gas_grid:
+        row = run_economics_gas_heater(gas_heater_sim, BASE_FULL_LOAD_HOURS, gc,
+                                        co2_price_eur_per_t=BASE_CO2_PRICE)
+        gas_heater_grid_2d.append(row["c_P"])
+
+    # HTHP c_P depends only on c_el (gas price doesn't enter run_economics),
+    # so we only need a 1-D sweep over electricity prices per fluid combo.
+    # We still expose a 2-D-shaped result for plotting symmetry with the
+    # gas heater grid.
+    hthp_cP_grid_2d = {}  # {(f1, f2): [c_P over e1c_grid]}
+    for f1, f2 in valid_combos:
+        sim = hthp[(f1, f2, LIFT_SHARE_DEFAULT, T_SOURCE_IN_DEFAULT)]
+        cps = []
+        for e1c in e1c_grid:
+            eco = run_economics(sim, BASE_FULL_LOAD_HOURS, e1c)
+            cps.append(eco["c_P"] if eco else np.nan)
+        hthp_cP_grid_2d[(f1, f2)] = cps
+
+    price_sens_2d = {
+        "frac_range": list(PRICE_SENS_FRAC_RANGE),
+        "e1c_grid": e1c_grid,
+        "gas_grid": gas_grid,
+        "gas_heater_cP": gas_heater_grid_2d,   # length = len(gas_grid)
+        "hthp_cP": hthp_cP_grid_2d,            # {(f1, f2): [len(e1c_grid)]}
+        "base_e1c": BASE_E1_C,
+        "base_gas": BASE_GAS_C,
+    }
+
+    # ── T_steam sensitivity (at default LS / T_source_in) ────────────────
+    # Reads sims["hthp_T_steam"] (keyed by (f1, f2, T_steam)) and per-T_steam
+    # gas-heater results, computes c_P and gas-heater c_P at base prices.
+    print("  T_steam sensitivity ...")
+    hthp_T_steam_sims = simulations.get("hthp_T_steam", {})
+    gas_T_steam_sims = simulations.get("gas_heater_T_steam", {})
+    sens_T_steam = {}
+    gas_heater_T_steam = {}
+    for T_steam in T_STEAM_RANGE:
+        print(f"  --- T_steam = {T_steam:.0f} °C ---")
+        gh_sim = gas_T_steam_sims.get(T_steam)
+        if gh_sim is not None:
+            gh_eco = run_economics_gas_heater(gh_sim, BASE_FULL_LOAD_HOURS, BASE_GAS_C,
+                                                co2_price_eur_per_t=BASE_CO2_PRICE)
+            gas_heater_T_steam[T_steam] = {
+                "c_P": gh_eco["c_P"],
+                "Z_sum": gh_eco["Z_sum"],
+                "COP": gh_sim["COP"],
+                "epsilon": gh_sim["epsilon"],
+            }
+            print(f"    Gas heater (ref): COP={gh_sim['COP']:.3f}  "
+                  f"epsilon={gh_sim['epsilon']:.4f}  "
+                  f"c_P={gh_eco['c_P']:.2f}")
+        for f1 in FLUIDS_C1:
+            for f2 in FLUIDS_C2:
+                sim = hthp_T_steam_sims.get((f1, f2, T_steam))
+                if sim is None:
+                    sens_T_steam[(f1, f2, T_steam)] = None
+                    continue
+                eco = run_economics(sim, BASE_FULL_LOAD_HOURS, BASE_E1_C)
+                sens_T_steam[(f1, f2, T_steam)] = {
+                    "COP": sim["COP"],
+                    "epsilon": sim["epsilon"],
+                    "c_P": eco["c_P"] if eco else np.nan,
+                }
+                cp = eco["c_P"] if eco else float("nan")
+                print(f"    {f1}/{f2:6s}: COP={sim['COP']:.3f}  "
+                      f"epsilon={sim['epsilon']:.4f}  c_P={cp:.2f}")
+
     # ── Mass flow sensitivity (across SOURCE_MASS_FLOW_RANGE) ─────────
     print("  Mass flow sensitivity ...")
     sens_mass_flow = {}
@@ -389,12 +463,10 @@ def run_all_analysis(simulations):
 
     # ── Pack everything ──────────────────────────────────────────────────
     return {
-        "heater_ref": heater_ref,
         "gas_heater_ref": gas_heater_ref,
         "base_results": base_results,
         "valid_combos": valid_combos,
         "sensitivity_e1c": sens_e1c,
-        "heater_sens_e1c": heater_sens_e1c,
         "gas_heater_sens_e1c": gas_heater_sens_e1c,
         "sensitivity_lift_share": sens_lift_share,
         "valid_combos_lift_share": valid_combos_lift_share,
@@ -410,6 +482,9 @@ def run_all_analysis(simulations):
         "sensitivity_e1c_by_T_source_in_fm": sens_e1c_by_T_source_in_fm,
         "sensitivity_lift_share_fm": sens_lift_share_fm,
         "sensitivity_mass_flow": sens_mass_flow,
+        "price_sens_2d": price_sens_2d,
+        "sensitivity_T_steam": sens_T_steam,
+        "gas_heater_T_steam": gas_heater_T_steam,
     }
 
 
@@ -472,8 +547,6 @@ def save_analysis(data):
     out = {}
 
     # Scalars / simple dicts
-    out["heater_ref"] = data["heater_ref"]
-    out["heater_sens_e1c"] = data["heater_sens_e1c"]
     out["gas_heater_ref"] = data["gas_heater_ref"]
     out["gas_heater_sens_e1c"] = data["gas_heater_sens_e1c"]
 
@@ -530,6 +603,22 @@ def save_analysis(data):
     out["sensitivity_lift_share_fm"] = _encode_dict_keys(data["sensitivity_lift_share_fm"])
     out["sensitivity_mass_flow"] = _encode_dict_keys(data["sensitivity_mass_flow"])
 
+    # T_steam sensitivity (at default LS / T_source_in)
+    out["sensitivity_T_steam"] = _encode_dict_keys(data["sensitivity_T_steam"])
+    out["gas_heater_T_steam"] = {str(T): v for T, v in data["gas_heater_T_steam"].items()}
+
+    # 2-D price sensitivity (±50 %)
+    ps = data["price_sens_2d"]
+    out["price_sens_2d"] = {
+        "frac_range": ps["frac_range"],
+        "e1c_grid": ps["e1c_grid"],
+        "gas_grid": ps["gas_grid"],
+        "gas_heater_cP": ps["gas_heater_cP"],
+        "hthp_cP": _encode_dict_keys(ps["hthp_cP"]),
+        "base_e1c": ps["base_e1c"],
+        "base_gas": ps["base_gas"],
+    }
+
     os.makedirs(os.path.dirname(ANALYSIS_JSON_FILE), exist_ok=True)
     with open(ANALYSIS_JSON_FILE, "w") as f:
         json.dump(out, f, cls=NumpyEncoder, indent=2)
@@ -544,8 +633,6 @@ def load_analysis():
         raw = json.load(f)
 
     data = {}
-    data["heater_ref"] = raw["heater_ref"]
-    data["heater_sens_e1c"] = raw["heater_sens_e1c"]
     data["gas_heater_ref"] = raw["gas_heater_ref"]
     data["gas_heater_sens_e1c"] = raw["gas_heater_sens_e1c"]
 
@@ -592,6 +679,23 @@ def load_analysis():
     }
     data["sensitivity_lift_share_fm"] = _decode_dict_triple_keys(raw.get("sensitivity_lift_share_fm", {}))
     data["sensitivity_mass_flow"] = _decode_dict_quad_keys(raw.get("sensitivity_mass_flow", {}))
+    data["sensitivity_T_steam"] = _decode_dict_triple_keys(raw.get("sensitivity_T_steam", {}))
+    data["gas_heater_T_steam"] = {float(k): v for k, v in raw.get("gas_heater_T_steam", {}).items()}
+
+    # 2-D price sensitivity (±50 %) — may be missing from older analysis JSONs
+    ps_raw = raw.get("price_sens_2d")
+    if ps_raw is not None:
+        data["price_sens_2d"] = {
+            "frac_range": ps_raw["frac_range"],
+            "e1c_grid": ps_raw["e1c_grid"],
+            "gas_grid": ps_raw["gas_grid"],
+            "gas_heater_cP": ps_raw["gas_heater_cP"],
+            "hthp_cP": _decode_dict_pair_keys(ps_raw["hthp_cP"]),
+            "base_e1c": ps_raw["base_e1c"],
+            "base_gas": ps_raw["base_gas"],
+        }
+    else:
+        data["price_sens_2d"] = None
 
     print(f"Analysis loaded <- {ANALYSIS_JSON_FILE}")
     return data
