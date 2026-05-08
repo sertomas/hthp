@@ -1,11 +1,11 @@
 metric,value,unit
 COP (= η_gas),0.9,-
-ε (exergy efficiency),0.2229,-
-E_F (fuel chemical exergy),2513.21,kW
+ε (exergy efficiency),0.2227,-
+E_F (fuel chemical exergy),2515.26,kW
 E_P (steam exergy gain),560.12,kW
 E_D (exergy destruction),1847.57,kW
 Q_H (steam duty),2202.11,kW
 Q_gas (LHV thermal input),2446.79,kW
 ṁ_CO2 (combustion),483.0223,kg/h
-c_P (with CO2 charge),71.404,EUR/GJ_ex
+c_P (with CO2 charge),71.345,EUR/GJ_ex
 Z_sum (retrofit ⇒ 0),0.0,EUR/h

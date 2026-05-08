@@ -2,8 +2,10 @@
 
 Thermodynamic simulation, exergy analysis and exergoeconomic comparison of
 cascaded two-stage high-temperature heat pumps (HTHP) for industrial steam
-generation, benchmarked against an electrical resistance heater and a gas
-heater.
+generation, benchmarked against a natural-gas heater reference. The gas
+reference is priced fuel + EU ETS / BEHG carbon charge by default (set
+`BASE_CO2_PRICE = 0` in `config.py` to reproduce the Ommen 2015 fuel-only
+baseline).
 
 ## System description
 
@@ -12,57 +14,66 @@ internal heat exchanger (IHX):
 
 - **Cycle 1 (lower)** absorbs heat from a source water stream and rejects it to cycle 2.
 - **Cycle 2 (upper)** lifts the temperature further and generates saturated
-  steam at 2 bar via a steam generator.
+  steam at the case-study sink temperature.
 
-The total temperature lift (from source water inlet to steam at ~120 °C) is
-split between the two cycles using a **lift share** parameter.  A lift share
-of 50/50 means the lower cycle handles 50 % of the total lift and the upper
-cycle handles 50 %.  The intermediate temperature T34 (evaporation
-temperature of cycle 2) is computed as:
+The total temperature lift is split between the two cycles using a **lift
+share** parameter.  A lift share of 0.50 means the lower cycle handles 50 %
+of the total lift and the upper cycle handles the remaining 50 %.  The
+intermediate temperature T34 (evaporation temperature of cycle 2) is
 
 ```
 T34 = T_source_in + lift_share * (T_steam - T_source_in)
 ```
 
-This relative definition ensures the split remains physically meaningful
-when the source water inlet temperature is varied.
+This relative definition keeps the split physically meaningful as the
+source water inlet and sink steam temperatures are varied.
 
-The study evaluates all combinations of:
+Fluid combinations:
 
 | Cycle 1 fluids | Cycle 2 fluids |
 |----------------|----------------|
-| R290, R1270, R717 | R600a, R600, R717 |
+| R290, R1270, R717 | R600a, R600 |
+
+(R717 in cycle 2 was dropped — see the comment block at the top of
+`config.py` for the reasoning. R744 is intentionally excluded as well.)
 
 Key boundary conditions:
 
-- Source water inlet: 20–60 °C (variable), 5–10 K temperature drop
-- Steam: 2 bar, saturated liquid to saturated vapour, 1 kg/s
+- Source water: inlet 20–60 °C (sensitivity range), fixed mass flow
+  `SOURCE_MASS_FLOW = 30 kg/s` (T_out is then free). A fixed-ΔT mode
+  (`source_mode="fixed_delta_T"`) is still implemented in `simulate_hthp`
+  but unused by the pipeline.
+- Steam sink: saturated, 100 / 110 / 120 °C (case-study sweep), 1 MWth
+  nominal heating capacity
 - Pinch temperature difference: 5 K
-- Compressor isentropic efficiency: 0.74
-- Pump isentropic efficiency: 0.8
-- Motor efficiency: 0.985
+- Compressor isentropic efficiency: 0.80 (Ommen 2015, Table 1)
+- Pump isentropic efficiency: 0.80
+- Motor electrical efficiency: 0.95 (Ommen 2015, Table 1)
 
 ## Project structure
 
 ```
 .
-├── config.py          Central configuration (fluids, economic params, ranges)
-├── models.py          TESPy network builder + exergy analysis (simulate_hthp, simulate_heater, simulate_gas_heater)
-├── economics.py       PEC cost correlations + exergoeconomic analysis (run_economics)
-├── simulate.py        Stage 1 — batch simulation runner with JSON caching
-├── analyze.py         Stage 2 — economics, sensitivities, CSV export
-├── plot.py            Stage 3 — all figures (bars, heatmaps, sensitivities, Q-T, log(p)-h)
-├── main.py            Orchestrator with CLI flags
-├── requirements.txt   Python dependencies
-└── results/
-    ├── cache/
-    │   ├── sims/              Per-simulation JSON folders
-    │   ├── sim_index.json     Simulation index
-    │   ├── heater.json        Cached heater reference
-    │   ├── gas_heater.json    Cached gas heater reference
-    │   └── analysis.json      Cached Stage 2 output
-    ├── overview/              Comparison and sensitivity figures
-    └── <F1>_<F2>/LS_<pct>_Tsrc_<T>/   Per-scenario results (CSV, Q-T, log(p)-h)
+├── main.py                            Pipeline orchestrator + single-design fast path
+├── config.py                          Central configuration (fluids, economics, sweeps)
+├── models.py                          TESPy + exergy: simulate_hthp, simulate_gas_heater
+├── economics.py                       PEC correlations, run_economics, run_economics_gas_heater
+│
+├── case_steam.py                      Stage 1: 150-case TESPy feasibility screen (per T_steam)
+├── reclassify_modern.py               Stage 2: relabel screen output under modern envelopes
+├── plot_case_steam.py                 Stage 3: feasibility / COP / T_disch / p_high grids
+│
+├── case_steam_economics.py            Stage 4: exergoeconomic analysis on OK designs
+├── plot_case_steam_economics.py       Stage 5: c_P heatmap, PEC vs Annex 58, sensitivities
+│
+├── export_design_details.py           Stage 6: per-design connections / components / Q-T / log(p)-h
+├── plot_compare_T_steam.py            Stage 7: cross-T_steam comparison (after all 3 cases)
+│
+├── plot_common.py                     Shared 4-state classification + plotting helpers
+├── screen_cascade.py                  Ommen 2015 envelope helpers (used by stages 1 + 2)
+│
+├── requirements.txt
+└── results/                           Output (see "Output structure" below)
 ```
 
 ## Installation
@@ -78,197 +89,190 @@ Dependencies: `tespy`, `exerpy`, `numpy`, `pandas`, `matplotlib`, `CoolProp`,
 
 ### Full pipeline
 
-```bash
+```powershell
 python main.py
 ```
 
-This runs all three stages in sequence:
+Runs the seven-stage pipeline once per `T_steam` ∈ {100, 110, 120} °C, then
+writes the cross-T_steam comparison plots. Total runtime ≈ 24 min on a
+typical laptop.
 
-1. **Simulate** — solves the TESPy network for every fluid combination, lift
-   share and T_source_in value, saves JSON files under `results/cache/sims/`.
-2. **Analyze** — runs exergoeconomic cost balances and sensitivity sweeps,
-   exports CSV tables, saves `results/cache/analysis.json`.
-3. **Plot** — generates all figures under `results/`.
+### Single steam temperature
 
-### Skipping expensive stages
-
-```bash
-# Changed an economic parameter in config.py? Re-run analysis + plots only:
-python main.py --skip-sim
-
-# Only tweaking a plot? Re-generate figures from cached data:
-python main.py --only-plots
+```powershell
+python main.py --t-steam 110     # only the 110 °C case (~8 min)
 ```
 
-### Running individual stages
+### Skipping cached stages
 
-Each stage can be run independently:
-
-```bash
-python simulate.py       # Stage 1 only
-python analyze.py        # Stage 2 only (requires cached simulations)
-python plot.py           # Stage 3 only (requires both caches)
+```powershell
+python main.py --skip-screen        # reuse cached 150-case screen CSV
+python main.py --skip-economics     # reuse cached economics CSVs
+python main.py --skip-export        # skip per-design dumps (alias: --no-export)
+python main.py --only-plots         # regenerate plots only, from cached CSVs
 ```
 
-### Single simulation
+### Single-design fast path (~5 s)
 
-Run a single fluid combination from the CLI:
-
-```bash
-python simulate.py R290 R600a                                    # defaults
-python simulate.py R290 R600a --lift-share 0.50                   # custom lift share
-python simulate.py R290 R600a --T-source-in 40                    # custom T_source_in
-python simulate.py R290 R600a --lift-share 0.50 --T-source-in 40
+```powershell
+python main.py --design R290 R600 0.40 40
+                      # f1   f2   LS  T_src(°C)   — defaults to T_steam = 110
 ```
 
-Or programmatically:
+Writes `connections.csv`, `components.csv`, `qt_diagram.png` and
+`logph_diagram.png` under
+`results/case_steam_110/designs/<F1>_<F2>/LS<pct>_Tsrc<T>/`, and prints
+COP, ε, c_P, Z_sum and TCI/kW.
+
+### List all OK designs
+
+```powershell
+python main.py --list-designs
+```
+
+Prints the table of all designs that survived the modern-envelope feasibility
+filter (110 °C case), sorted by c_P. Requires the Stage 4 cache.
+
+### Programmatic use
 
 ```python
 from config import lift_share_to_T34
 from models import simulate_hthp
 from economics import run_economics
 
-T34 = lift_share_to_T34(0.50, 40)  # 50/50 split at 40 °C source water
-sim = simulate_hthp("R290", "R600a", T_evap_c2_override=T34, T_source_in_override=40)
-eco = run_economics(sim, full_load_hours=5500, e1_c_ct_kwh=18.0)
-
+T34 = lift_share_to_T34(0.50, 40, T_steam=110)
+sim = simulate_hthp(
+    "R290", "R600",
+    T_evap_c2_override=T34,
+    T_source_in_override=40,
+    T_steam_override=110,
+    source_mode="fixed_mass_flow",  # mirrors the pipeline
+)
+eco = run_economics(sim, full_load_hours=7500, e1_c_ct_kwh=15.9)
 print(f"COP = {sim['COP']:.3f}")
 print(f"c_P = {eco['c_P']:.2f} EUR/GJ")
 ```
 
 ## Configuration
 
-All tuneable parameters live in `config.py`:
+All tuneable parameters live in [config.py](config.py):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `FLUIDS_C1` | `["R290", "R1270", "R717"]` | Cycle-1 refrigerants |
-| `FLUIDS_C2` | `["R600a", "R600", "R717"]` | Cycle-2 refrigerants |
-| `BASE_FULL_LOAD_HOURS` | 5500 h/a | Base-case operating hours |
-| `BASE_E1_C` | 159 EUR/MWh | Industrial electricity, medium consumer (20–70 GWh/a), full end-customer price 2025 — BDEW |
-| `BASE_GAS_C` | 47 EUR/MWh | Natural gas wholesale, Day-Ahead spot at German THE hub, end-April 2026 — BDEW |
-| `BASE_CO2_PRICE` | 60 EUR/tCO2 | EU ETS / BEHG corridor 55–65 EUR/tCO2, midpoint, valid from 2026-01-01 — Destatis |
-| `LIFT_SHARE_RANGE` | [0.30, 0.40, 0.50, 0.60, 0.70] | Lower-cycle lift share fractions |
-| `LIFT_SHARE_DEFAULT` | 0.50 | Base-case lift share (50/50) |
-| `T_SOURCE_IN_RANGE` | [20, 25, ..., 60] °C | Source water inlet temperature sensitivity values |
-| `T_SOURCE_IN_DEFAULT` | 20 °C | Base-case source water inlet temperature |
-| `FULL_LOAD_HOURS_RANGE` | 2000–8500, step 500 | Hours sweep range |
-| `E1_C_RANGE` | 100–200, step 10 EUR/MWh | Electricity price sweep range (brackets `BASE_E1_C = 159`) |
+| `FLUIDS_C2` | `["R600a", "R600"]` | Cycle-2 refrigerants |
+| `LIFT_SHARE_RANGE` | `[0.30, 0.40, 0.50, 0.60, 0.70]` | Lower-cycle lift share fractions |
+| `LIFT_SHARE_DEFAULT` | `0.50` | Base-case lift share (50/50) |
+| `T_SOURCE_IN_RANGE` | `[20, 30, 40, 50, 60]` °C | Source water inlet sensitivity |
+| `T_SOURCE_IN_DEFAULT` | `20` °C | Base-case source water inlet |
+| `T_STEAMS_TO_RUN` | `[100, 110, 120]` °C | Per-case T_steam values for the full pipeline |
+| `T_STEAM_CASE_DEFAULT` | `110` °C | Single-design fast-path default |
+| `Q_H_NOMINAL_KW` | `1000` kW | Nominal heating output (1 MWth) |
+| `BASE_FULL_LOAD_HOURS` | `7500` h/a | Operating hours |
+| `BASE_E1_C` | `159` EUR/MWh | Industrial electricity (BDEW 2025, medium consumer) |
+| `BASE_GAS_C` | `47` EUR/MWh | Natural gas wholesale (BDEW THE Day-Ahead, end-April 2026) |
+| `BASE_CO2_PRICE` | `60` EUR/tCO2 | EU ETS / BEHG midpoint, valid from 2026-01-01 |
+| `E1_C_RANGE` | 100–200 step 10 EUR/MWh | Electricity-price sweep |
+| `PRICE_SENS_FRAC_RANGE` | −50 % … +50 % step 10 % | Joint e1/gas price sensitivity |
 
-Changing a parameter in `config.py` and re-running the appropriate stage is all
-that is needed — no code modifications required.
+Changing a parameter and re-running the appropriate stage (with
+`--skip-screen` / `--skip-economics` to reuse upstream caches) is all that
+is needed.
 
 ## Module reference
 
 ### `models.py`
 
-Thermodynamic simulation layer. Three public functions:
+Two public functions:
 
-- **`simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None, T_source_in_override=None)`**
-  Builds a TESPy network, solves it in two passes (initial guess then
-  pinch-based), runs an exergy analysis via exerpy, and returns a dict with
-  performance metrics (COP, epsilon, E_F, E_P, E_D), component sizing data
-  (volumetric flows, shaft powers, HX areas), pre-computed Q-T section data
-  (for Q-T diagrams) and cycle state points (for log(p)-h diagrams).
-  Returns `None` if the combination is infeasible.
+- **`simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None, T_source_in_override=None, source_mode="fixed_delta_T", m_source=None, T_steam_override=None, skip_ommen_check=False)`**
+  Builds a TESPy network, solves it (initial guess + pinch-based pass),
+  runs an `exerpy` exergy analysis, and returns a dict with COP, ε, E_F,
+  E_P, E_D, sizing data (V̇, W_shaft, HX areas), Q-T sections (for Q-T
+  diagrams) and cycle state points (for log(p)-h diagrams). Returns
+  `None` on infeasibility / non-convergence.
 
-- **`simulate_heater()`**
-  Analytical reference case: electrical resistance heater with the same
-  water-side conditions. Returns COP (= 1), exergetic efficiency and
-  exergy flows.
-
-- **`simulate_gas_heater(eta_gas=0.95)`**
-  TESPy-based gas heater reference: combustion chamber + heat exchanger
-  with Ahrendts chemical exergy accounting. Returns COP (= eta_gas),
-  exergetic efficiency and exergy flows.
+- **`simulate_gas_heater(eta_gas=0.90, T_steam_override=None)`**
+  TESPy combustion-chamber + heat-exchanger model with Ahrendts chemical
+  exergy accounting. Returns COP (= `eta_gas`), exergetic efficiency,
+  exergy flows and the CO2 mass flow (used for the carbon charge).
 
 ### `economics.py`
 
-Cost correlations and exergoeconomic analysis:
+PEC correlations and exergoeconomic analysis:
 
-- **PEC functions** (`pec_compressor`, `pec_motor`, `pec_plate_hx`,
-  `pec_pump`, `pec_air_cooler`):
-  Power-law and polynomial scaling correlations returning
-  purchased-equipment costs in reference-year EUR. Refrigerant-specific
-  via an internal cost-type mapping. Cost index adjustment is applied in
+- **`pec_compressor`, `pec_motor`, `pec_plate_hx`, `pec_pump`** — power-law /
+  polynomial scaling to reference-year EUR. Refrigerant-specific via an
+  internal cost-type mapping; cost-index adjustment applied in
   `run_economics`.
+- **`run_economics(sim, full_load_hours, e1_c_ct_kwh)`** — converts PEC into
+  hourly cost rates `Z` via `EconomicAnalysis`, then solves the cost
+  balance via `ExergoeconomicAnalysis`. Returns `c_P` [EUR/GJ] and
+  `Z_sum` [EUR/h].
+- **`run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh, co2_price_eur_per_t=0.0)`** —
+  cost balance for the gas reference. The pipeline calls it with
+  `co2_price_eur_per_t = BASE_CO2_PRICE`, so the headline gas c_P includes
+  the carbon charge; passing `0.0` (the function-level default) reproduces
+  Ommen's fuel-only baseline.
 
-- **`run_economics(sim, full_load_hours, e1_c_ct_kwh)`**:
-  Computes PEC for all components, converts to hourly cost rates Z via
-  `EconomicAnalysis`, then solves the full cost balance via
-  `ExergoeconomicAnalysis`. Returns c_P [EUR/GJ] and Z_sum [EUR/h].
+### Stage 1 — `case_steam.py`
 
-- **`run_economics_heater(sim, full_load_hours, e1_c_ct_kwh)`**:
-  Simplified cost balance for the electrical heater reference case.
+Cascaded HTHP feasibility screen at fixed `Q_H = 1 MWth` and a given
+`T_steam`. Runs `simulate_hthp` for every (f1, f2, LS, T_src) combination,
+applies Ommen 2015 Table 3 envelope checks (with +10 % pressure tolerance),
+and writes `case_steam_<T>.csv`. ≈ 5 min per T_steam.
 
-- **`run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh, co2_price_eur_per_t=0.0)`**:
-  Simplified cost balance for the gas heater reference case. Optional
-  `co2_price_eur_per_t` adds an EU ETS-style carbon charge on top of the
-  fuel cost, using the CO2 mass flow returned by `simulate_gas_heater`
-  (computed from the TESPy combustion-chamber CH4 input via stoichiometry).
+### Stage 2 — `reclassify_modern.py`
 
-### `simulate.py`
+Re-applies the same 4-state classification (`OK` / `V_ONLY` / `HARD` /
+`NOSOLVE`) using a *modern* compressor envelope (current commercial Vilter
+/ GEA / Mayekawa specs) instead of the 2015 Ommen envelope. Writes
+`case_steam_<T>_enriched.csv`. Instant.
 
-Batch runner for Stage 1. Iterates over all
-(fluid_c1, fluid_c2, lift_share, T_source_in) combinations defined in
-`config.py`, computing T34 from the lift share and T_source_in.  Results are
-serialised as JSON files (one folder per simulation) under `results/cache/sims/`.
+### Stage 3 — `plot_case_steam.py`
 
-Key functions: `run_all_simulations`, `run_single_simulation`,
-`save_simulations`, `load_simulations`.
+Renders the feasibility, COP, T_disch and p_high grids. Run
+twice automatically — once in *Ommen-strict* mode (no `_modern` suffix),
+once in *modern* mode (`_modern` suffix). Instant.
 
-### `analyze.py`
+### Stage 4 — `case_steam_economics.py`
 
-Economics runner for Stage 2. Loads cached simulations, computes:
+Exergoeconomic analysis on every OK (modern) design at LS ∈ {0.30, 0.40,
+0.50}. Scales each design to 1 MWth for direct Annex 58 (2023) capital-
+cost comparison. Writes `economics/economics_base.csv`,
+`economics_pec_breakdown.csv` and price/utilisation sensitivity CSVs.
+≈ 3 min per T_steam.
 
-- Base-case results for all fluid combinations at default lift share and T_source_in
-- Heater and gas heater reference economics
-- Sensitivity sweeps: c_P vs full-load hours and electricity price (base +
-  alternative scenarios)
-- Lift share sensitivity: COP, epsilon, c_P across all lift share values
-- T_source_in sensitivity: COP, epsilon, c_P across all T_source_in values
-- Cross-sensitivities: economic sweeps for every lift share and T_source_in value
-- Exergoeconomic CSV tables (components, connections, non-material streams)
+### Stage 5 — `plot_case_steam_economics.py`
 
-Results saved to `results/cache/analysis.json`.
+c_P heatmap, PEC-per-kW vs Annex 58 band, PEC component breakdown, c_P
+vs e1 / gas / FLH, ±50 % 2-D price sensitivity, Tsatsaronis improvement-
+priority quadrant, economic vs exergoeconomic ranking, best-design
+dashboard. Instant.
 
-Key functions: `run_all_analysis`, `save_analysis`, `load_analysis`.
+### Stage 6 — `export_design_details.py`
 
-### `plot.py`
+Per-design dump of TESPy connection / component tables, Q-T diagrams,
+log(p)-h diagrams (via `fluprodia`), and exergoeconomic component /
+material / non-material CSVs. ≈ 5 min per T_steam.
 
-Figure generator for Stage 3. Each `plot_*` function produces one figure
-(or a family of per-scenario figures) and saves to `results/`:
+### Stage 7 — `plot_compare_T_steam.py`
 
-| Function | Figure |
-|----------|--------|
-| `plot_comparison_bars` | Grouped bar chart (COP, epsilon, c_P, Z_sum) |
-| `plot_comparison_heatmaps` | Heatmap matrix (C1 vs C2 fluids) |
-| `plot_sensitivity_hours` | c_P vs full-load hours (base case) |
-| `plot_sensitivity_e1c` | c_P vs electricity price (base case) |
-| `plot_sensitivity_hours_alt` | c_P vs full-load hours (high elec. price) |
-| `plot_sensitivity_e1c_alt` | c_P vs electricity price (high utilisation) |
-| `plot_sensitivity_lift_share_COP` | COP vs lift share |
-| `plot_sensitivity_lift_share_cP` | c_P vs lift share |
-| `plot_sensitivity_lift_share_epsilon` | Exergetic efficiency vs lift share |
-| `plot_sensitivity_lift_share_heatmap` | Heatmap of COP/epsilon/c_P across lift shares |
-| `plot_sensitivity_hours_by_lift_share` | c_P vs hours, one subplot per lift share |
-| `plot_sensitivity_e1c_by_lift_share` | c_P vs elec. price, one subplot per lift share |
-| `plot_sensitivity_T_source_in_COP` | COP vs T_source_in |
-| `plot_sensitivity_T_source_in_cP` | c_P vs T_source_in |
-| `plot_sensitivity_T_source_in_epsilon` | Exergetic efficiency vs T_source_in |
-| `plot_sensitivity_T_source_in_heatmap` | Heatmap of COP/epsilon/c_P across T_source_in |
-| `plot_sensitivity_T_source_in_heatmap_by_lift_share` | Per-lift-share T_source_in heatmaps |
-| `plot_sensitivity_hours_by_T_source_in` | c_P vs hours, one subplot per T_source_in |
-| `plot_sensitivity_e1c_by_T_source_in` | c_P vs elec. price, one subplot per T_source_in |
-| `plot_qt_diagrams` | Q-T diagrams for all HXs (per scenario) |
-| `plot_logph_diagrams` | log(p)-h diagrams for both cycles (per scenario) |
+Cross-T_steam comparison plots (best-c_P trends, c_P heatmap across all
+three temperatures). Triggered automatically once `economics_base.csv`
+exists for every T_steam in `T_STEAMS_TO_RUN`.
 
-`generate_all_plots(analysis, simulations)` calls all of the above.
+### Helpers
 
-### `main.py`
-
-CLI orchestrator. Accepts `--skip-sim` and `--only-plots` flags to skip
-upstream stages when only downstream parameters have changed.
+- **`config.py`** — fluids, sensitivity ranges, economic constants,
+  per-T_steam path helpers (`case_results_dir`, `t_steam_compare_dir`),
+  `lift_share_to_T34`. Touch-and-rerun is the intended workflow.
+- **`plot_common.py`** — `classify_status` (4-state precedence:
+  `NOSOLVE` ≻ `HARD` ≻ `V_ONLY` ≻ `OK`), `slice_grid`, label shorteners.
+- **`screen_cascade.py`** — Ommen 2015 envelope helpers
+  (`COMPRESSOR_SPEC`, `OMMEN_P_TOL`, `T_DISCH_MAX`, `_envelope_label`,
+  `_T_from_p_h`, `_pre_classify_failure`). Imported by stages 1 and 2;
+  not runnable standalone.
 
 ## Output structure
 
@@ -276,39 +280,38 @@ After a full run, `results/` contains:
 
 ```
 results/
-├── cache/
-│   ├── sims/                  Per-simulation JSON folders
-│   ├── sim_index.json
-│   ├── heater.json
-│   ├── gas_heater.json
-│   └── analysis.json
-├── overview/
-│   ├── comparison_bars.png
-│   ├── comparison_heatmaps.png
-│   ├── sensitivity_hours.png
-│   ├── sensitivity_e1c.png
-│   ├── sensitivity_hours_high_price.png
-│   ├── sensitivity_e1c_high_util.png
-│   ├── sensitivity_lift_share_COP.png
-│   ├── sensitivity_lift_share_cP.png
-│   ├── sensitivity_lift_share_epsilon.png
-│   ├── sensitivity_lift_share_heatmap.png
-│   ├── sensitivity_hours_by_lift_share.png
-│   ├── sensitivity_e1c_by_lift_share.png
-│   ├── sensitivity_T_source_in_COP.png
-│   ├── sensitivity_T_source_in_cP.png
-│   ├── sensitivity_T_source_in_epsilon.png
-│   ├── sensitivity_T_source_in_heatmap.png
-│   ├── sensitivity_T_source_in_heatmap_LS_<pct>.png
-│   ├── sensitivity_hours_by_T_source_in.png
-│   └── sensitivity_e1c_by_T_source_in.png
-└── <F1>_<F2>/LS_<pct>_Tsrc_<T>/
-    ├── components.csv            Exergoeconomic component results
-    ├── connections_exergy.csv    Connection exergy values
-    ├── connections_costs.csv     Connection cost rates
-    ├── nonmaterial.csv           Non-material stream results
-    ├── QT_diagram.png            Q-T diagram (3 heat exchangers)
-    └── logph_diagram.png         log(p)-h diagram (both cycles)
+├── case_steam_100/, case_steam_110/, case_steam_120/
+│   ├── case_steam_<T>.csv               (Stage 1 — raw 150-case screen)
+│   ├── case_steam_<T>_enriched.csv      (Stage 2 — with modern classification)
+│   ├── case_steam_<T>_modern_OK.csv     (Stage 2 — OK subset)
+│   ├── case_steam_<T>_per_pair.csv      (Stage 2 — best per fluid pair)
+│   ├── case_steam_<T>_sorted.csv        (Stage 2 — sorted by c_P proxy)
+│   ├── feasibility_grid[_modern].png    (Stage 3)
+│   ├── cop_grid[_modern].png            (Stage 3)
+│   ├── Tdisch_grid[_modern].png         (Stage 3)
+│   ├── p_high_grid[_modern].png         (Stage 3)
+│   ├── economics/
+│   │   ├── economics_base.csv           (Stage 4 — one row per OK design)
+│   │   ├── economics_pec_breakdown.csv  (Stage 4 — PEC by component)
+│   │   ├── economics_sensitivity_e1.csv (Stage 4 — c_P vs e1)
+│   │   ├── economics_sensitivity_FLH.csv(Stage 4 — c_P vs full-load hours)
+│   │   ├── gas_heater/                  (Stage 4 — reference case)
+│   │   ├── cP_grid.png, PEC_*.png,
+│   │   │   cP_vs_*.png, price_sensitivity_2d*.png,
+│   │   │   tsatsaronis_quadrant.png,
+│   │   │   best_designs_per_T_src.png,
+│   │   │   *_breakdown_*.png            (Stage 5)
+│   └── designs/<F1>_<F2>/LS<pct>_Tsrc<T>/
+│       ├── connections.csv              (Stage 6)
+│       ├── components.csv               (Stage 6)
+│       ├── qt_diagram.png               (Stage 6)
+│       ├── logph_diagram.png            (Stage 6)
+│       ├── exergoeco_components.csv          (Stage 6)
+│       ├── exergoeco_connections_material.csv(Stage 6)
+│       └── exergoeco_connections_nonmat.csv  (Stage 6)
+└── case_steam_compare/                  (Stage 7 — cross-T_steam plots)
+    ├── compare_cP_best_vs_T_steam.png
+    └── compare_cP_heatmap.png
 ```
 
 ## Typical workflows
@@ -316,7 +319,8 @@ results/
 | What changed | Command |
 |--------------|---------|
 | Nothing yet, first run | `python main.py` |
-| Fluid list, lift share range or T_source_in range | `python main.py` (full re-run) |
-| Economic parameter (e.g. electricity price) | `python main.py --skip-sim` |
-| Plot aesthetics (colours, labels, layout) | `python main.py --only-plots` |
-| Single combination check | `python simulate.py R290 R600a --lift-share 0.50 --T-source-in 40` |
+| Fluid list, lift-share or T_source_in range | `python main.py` (full re-run) |
+| Economic parameter (e.g. `BASE_E1_C`) | `python main.py --skip-screen` |
+| Plot aesthetics only | `python main.py --only-plots` |
+| Single combination check | `python main.py --design R290 R600 0.40 40` |
+| Inspect ranked OK designs | `python main.py --list-designs` |

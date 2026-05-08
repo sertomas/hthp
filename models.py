@@ -10,13 +10,12 @@ Provides two public functions:
   for the natural gas heater used as a reference case.
 """
 
-import json
 import logging
 
 import numpy as np
 
 from CoolProp.CoolProp import PropsSI
-from tespy.components import Compressor, CycleCloser, Motor, PowerBus, PowerSource, Pump, Sink, Source, Valve
+from tespy.components import Compressor, CycleCloser, Motor, PowerBus, PowerSource, Sink, Source, Valve
 from tespy.components import MovingBoundaryHeatExchanger as HeatExchanger
 from tespy.connections import Connection, PowerConnection, Ref
 from tespy.networks import Network
@@ -25,7 +24,7 @@ from exerpy import ExergyAnalysis
 from exerpy.parser.from_tespy.tespy_parser import to_exerpy
 
 from config import (
-    NumpyEncoder,
+    M_STEAM,
     SOURCE_DELTA_T,
     SOURCE_MASS_FLOW,
     T_STEAM_DEFAULT,
@@ -47,11 +46,17 @@ pinch = 5  # K
 p_water = p_water_for_T_steam(T_STEAM_DEFAULT)  # bar
 T_water_sat = T_STEAM_DEFAULT  # °C — by definition of T_STEAM_DEFAULT
 
-# Absolute pressure drops [bar] (average from literature ranges)
+# Absolute pressure drops [bar].
+# Brownfield-retrofit assumption: the source-water and sink-water (feedwater)
+# loops are pre-existing site infrastructure (the existing source-loop
+# circulator and the displaced gas-boiler feedwater pump remain in place),
+# so the heat-pump scope incurs *no* new pressure drop on the water sides.
+# Refrigerant-side Δp values are kept at typical plate-HX simulation defaults
+# (Jensen 2015, Mateu-Royo 2019; calibration reference pending).
 _DP = {
-    "SRC_HX": (0.15,  0.175),   # (source water side, refrigerant side)
-    "IHX":    (0.300, 0.150),    # (C1 condensing, C2 evaporating)
-    "SNK_HX": (0.250, 0.175),   # (C2 condensing, sink water side)
+    "SRC_HX": (0.0,   0.175),   # (source water side, refrigerant side)
+    "IHX":    (0.300, 0.150),   # (C1 condensing, C2 evaporating)
+    "SNK_HX": (0.250, 0.0),     # (C2 condensing, sink water side)
 }
 
 # Compressor high-side pressure limits per Ommen et al. (2015), Table 3.
@@ -64,10 +69,11 @@ _DP = {
 # - R717: HP envelope (Type 4, 50 bar). LP envelope (Type 3, 28 bar) is
 #   much tighter; switching between LP and HP cost classes happens later
 #   in run_economics based on the simulated discharge pressure.
-# - R744: transcritical Type 5, 140 bar. Cost row exists in Ommen Table 4
-#   but the simulation needs a transcritical TESPy topology (gas cooler,
-#   optimal-pressure search) which is not yet implemented — see the early
-#   reject in simulate_hthp.
+# - R744: transcritical Type 5, 140 bar. Cost row exists in Ommen Table 4.
+#   Transcritical handling IS implemented (see _TRANSCRITICAL_FLUIDS,
+#   _R744_P_HIGH_BAR, and the is_c?_transcritical branches in simulate_hthp)
+#   but R744 is not in any active fluid list (FLUIDS_C1 / FLUIDS_C2) — see
+#   the comment block at the top of config.py for the exclusion rationale.
 _OMMEN_P_MAX_BAR = {
     "R290":  28.0,
     "R1270": 28.0,
@@ -288,48 +294,6 @@ def _extract_qt_sections(hx_dict):
     return qt
 
 
-def reconstruct_ean(exerpy_json_path, T_source_in_val):
-    """
-    Reconstruct an ExergyAnalysis from a saved exerpy JSON file.
-
-    Loads the JSON, creates an ExergyAnalysis, classifies fuel/product/loss
-    streams, runs the analysis, and patches dissipative HX components.
-
-    Parameters
-    ----------
-    exerpy_json_path : str
-        Path to the exerpy_data.json file.
-    T_source_in_val : float
-        Source water inlet temperature [deg C] (needed for stream classification).
-
-    Returns
-    -------
-    ExergyAnalysis
-        Fully analysed ExergyAnalysis object.
-    """
-    ean = ExergyAnalysis.from_json(exerpy_json_path)
-
-    # Classify streams (same split as in simulate_hthp)
-    # Source water inlet (11) → system FUEL: water arrives carrying useful
-    # exergy (T_src ≥ Tamb in our case study), priced at c = 0.
-    # Source water outlet (13) → system LOSS: whatever exergy is left after
-    # the SRC_HX leaves the system unrecovered (back-calculated cost).
-    # This split avoids the binary cliff at T_src = Tamb that the previous
-    # paired-fuel/paired-loss logic introduced. Used unconditionally — the
-    # T_src_in_val argument is kept for API stability.
-    del T_source_in_val
-    product = {"inputs": ["43"], "outputs": ["41"]}
-    # exerpy convention: "inputs" ADD to the category, "outputs" SUBTRACT.
-    # 11 in fuel.inputs  → +E_11 to system fuel (water arriving with exergy)
-    # 13 in loss.inputs  → +E_13 to system loss (water leaving with exergy)
-    fuel = {"inputs": ["e1", "11"], "outputs": []}
-    loss = {"inputs": ["13"], "outputs": []}
-    ean.analyse(E_F=fuel, E_P=product, E_L=loss)
-
-    _patch_dissipative_hx(ean)
-    return ean
-
-
 def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
                    T_source_in_override=None, source_mode="fixed_delta_T",
                    m_source=None, T_steam_override=None,
@@ -358,14 +322,25 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         Source water constraint mode:
         - ``"fixed_delta_T"``: fix T_in and T_out = T_in - SOURCE_DELTA_T (m free).
         - ``"fixed_mass_flow"``: fix T_in and m (T_out free).
+        The function-level default is ``"fixed_delta_T"``, but every call
+        site in the pipeline (``main.py``, ``case_steam.py``,
+        ``case_steam_economics.py``, ``export_design_details.py``)
+        passes ``"fixed_mass_flow"`` explicitly. The ΔT mode is retained
+        for ad-hoc programmatic use only.
     m_source : float, optional
         Source water mass flow [kg/s] for ``"fixed_mass_flow"`` mode.
         Defaults to ``SOURCE_MASS_FLOW`` from config.
     T_steam_override : float, optional
         Sink-steam saturation temperature [deg C]. Defaults to
-        ``T_STEAM_DEFAULT`` (120 °C). Lower values relax the cycle-2
+        ``T_STEAM_DEFAULT`` (100 °C). Lower values relax the cycle-2
         condensing pressure and bring fluids like R600a back into the
         Ommen 2015 compressor envelope.
+    skip_ommen_check : bool, optional
+        If ``True``, skip the Ommen 2015 high-side pressure feasibility
+        gate inside the solver and return the converged state regardless
+        of envelope. Used by the screening stage (``case_steam.py``)
+        to keep out-of-envelope designs visible in the 4-state grid
+        instead of reporting them as ``None``. Default ``False``.
 
     Returns
     -------
@@ -378,7 +353,8 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         - **fluid_cycle1**, **fluid_cycle2** — fluid names.
         - **sizing** — dict of component sizing values.
         - **U_values** — dict of heat-transfer coefficients [W/(m^2 K)].
-        - **heat_exchangers** — TESPy HX objects (for Q-T diagrams).
+        - **qt_sections** — pre-computed Q-T section data (kW, °C) ready
+          for plotting; see ``_extract_qt_sections``.
         - **cycle_states** — state-point data (for log(p)-h diagrams).
     """
     T_evap_c2_val = T_evap_c2_override if T_evap_c2_override is not None else T_evap_c2
@@ -426,15 +402,13 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         nw = Network(T_unit="C", p_unit="bar", h_unit="kJ / kg", m_unit="kg / s", iterinfo=False)
 
-        # Source water loop
+        # Source water loop (no pump — existing site infrastructure)
         src_in = Source("source inlet")
         src_out = Sink("source outlet")
-        src_pump = Pump("SRC_PUMP")
 
-        # Sink water loop
+        # Sink water loop (no pump — pre-existing boiler feedwater pump)
         snk_in = Source("sink inlet")
         snk_out = Sink("sink outlet")
-        snk_pump = Pump("SNK_PUMP")
 
         # Heat exchangers & cycle components
         src_hx = HeatExchanger("SRC_HX")
@@ -448,9 +422,8 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         valve2 = Valve("VAL2")
         cc2 = CycleCloser("cc2")
 
-        # Source water connections
-        c11 = Connection(src_in, "out1", src_pump, "in1", label="11")
-        c12 = Connection(src_pump, "out1", src_hx, "in1", label="12")
+        # Source water connections (direct, no pump)
+        c11 = Connection(src_in, "out1", src_hx, "in1", label="11")
         c13 = Connection(src_hx, "out1", src_out, "in1", label="13")
 
         # Cycle 1 (lower)
@@ -467,44 +440,39 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         c33 = Connection(cc2, "out1", valve2, "in1", label="33")
         c34 = Connection(valve2, "out1", ihx, "in2", label="34")
 
-        # Sink water connections
-        c41 = Connection(snk_in, "out1", snk_pump, "in1", label="41")
-        c42 = Connection(snk_pump, "out1", snk_hx, "in2", label="42")
+        # Sink water connections (direct, no pump)
+        c41 = Connection(snk_in, "out1", snk_hx, "in2", label="41")
         c43 = Connection(snk_hx, "out2", snk_out, "in1", label="43")
 
         nw.add_conns(c21, c22, c22c, c23, c24)
-        nw.add_conns(c11, c12, c13)
+        nw.add_conns(c11, c13)
         nw.add_conns(c31, c32, c32c, c33, c34)
-        nw.add_conns(c41, c42, c43)
+        nw.add_conns(c41, c43)
 
-        # Electrical power network
+        # Electrical power network — only the two compressor motors remain
         power_input = PowerSource("grid")
-        distribution = PowerBus("electricity distribution", num_in=1, num_out=4)
+        distribution = PowerBus("electricity distribution", num_in=1, num_out=2)
         motor1 = Motor("MOT1")
         motor2 = Motor("MOT2")
-        motor3 = Motor("MOT3")  # drives SRC_PUMP
-        motor4 = Motor("MOT4")  # drives SNK_PUMP
 
         e1 = PowerConnection(power_input, "power", distribution, "power_in1", label="e1")
         e2 = PowerConnection(distribution, "power_out1", motor1, "power_in", label="e2")
         e3 = PowerConnection(motor1, "power_out", comp1, "power", label="e3")
         e4 = PowerConnection(distribution, "power_out2", motor2, "power_in", label="e4")
         e5 = PowerConnection(motor2, "power_out", comp2, "power", label="e5")
-        e6 = PowerConnection(distribution, "power_out3", motor3, "power_in", label="e6")
-        e7 = PowerConnection(motor3, "power_out", src_pump, "power", label="e7")
-        e8 = PowerConnection(distribution, "power_out4", motor4, "power_in", label="e8")
-        e9 = PowerConnection(motor4, "power_out", snk_pump, "power", label="e9")
-        nw.add_conns(e1, e2, e3, e4, e5, e6, e7, e8, e9)
+        nw.add_conns(e1, e2, e3, e4, e5)
 
         # Source water boundary conditions
+        # No Ref constraint on c13.p needed: with SRC_HX dp1=0 (water side),
+        # c13.p is automatically equal to c11.p, and adding the Ref would
+        # over-determine the system.
         if source_mode == "fixed_mass_flow":
             m_val = m_source if m_source is not None else SOURCE_MASS_FLOW
             c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source,
                          m=m_val)
-            c13.set_attr(p=Ref(c11, 1, 0))
         else:  # fixed_delta_T
             c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source)
-            c13.set_attr(T=T_src_out_val, p=Ref(c11, 1, 0))
+            c13.set_attr(T=T_src_out_val)
 
         # Cycle 1 boundary conditions
         c21.set_attr(fluid={fluid_cycle1: 1}, td_dew=pinch)
@@ -526,28 +494,25 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
             c33.set_attr(x=0)
         c34.set_attr(T=T_evap_c2_val)
 
-        # Sink water boundary conditions
-        c41.set_attr(fluid={"water": 1}, p=p_water_val, x=0, m=1)
-        c43.set_attr(x=1, p=Ref(c41, 1, 0))
+        # Sink water boundary conditions.
+        # No Ref constraint on c43.p: with SNK_HX dp2=0 (water/steam side),
+        # c43.p is automatically equal to c41.p (both at the steam saturation
+        # pressure), and adding the Ref would over-determine the system.
+        c41.set_attr(fluid={"water": 1}, p=p_water_val, x=0, m=M_STEAM)
+        c43.set_attr(x=1)
 
         # Component parameters
         # Compressor isentropic efficiency and motor electrical efficiency taken
         # from Ommen et al. (2015), "Technical and economic working domains of
         # industrial heat pumps: Part 1 - Single stage vapour compression heat
         # pumps", Int. J. Refrigeration 55, 168-182 — Table 1.
-        # Pump isentropic efficiency is not specified by Ommen 2015 (no pumps
-        # are costed in that study); kept at 0.80 as a literature default.
         comp1.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
         comp2.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
-        src_pump.set_attr(eta_s=0.8)
-        snk_pump.set_attr(eta_s=0.8)
         src_hx.set_attr(dp1=_DP["SRC_HX"][0], dp2=_DP["SRC_HX"][1])
         ihx.set_attr(dp1=_DP["IHX"][0], dp2=_DP["IHX"][1])
         snk_hx.set_attr(dp1=_DP["SNK_HX"][0], dp2=_DP["SNK_HX"][1])
         motor1.set_attr(eta=0.95)    # Ommen 2015, Table 1
         motor2.set_attr(eta=0.95)    # Ommen 2015, Table 1
-        motor3.set_attr(eta=0.95)    # Ommen 2015, Table 1
-        motor4.set_attr(eta=0.95)    # Ommen 2015, Table 1
 
         nw.solve("design")
 
@@ -596,8 +561,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         Q_H = c41.m.val * (c43.h.val - c41.h.val)  # kW
 
         # COP from energy balance (independent of exergy definitions)
-        W_shaft_total = (abs(comp1.P.val) + abs(comp2.P.val)
-                         + abs(src_pump.P.val) + abs(snk_pump.P.val))  # W
+        W_shaft_total = abs(comp1.P.val) + abs(comp2.P.val)  # W
         eta_motor = 0.95   # Ommen 2015, Table 1
         W_el = W_shaft_total / eta_motor
         COP = Q_H * 1000 / W_el  # Q_H [kW] → [W]
@@ -643,8 +607,6 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # Shaft powers [kW] (TESPy P.val is in W)
         W_comp1 = abs(comp1.P.val) / 1000
         W_comp2 = abs(comp2.P.val) / 1000
-        W_src_pump = abs(src_pump.P.val) / 1000
-        W_snk_pump = abs(snk_pump.P.val) / 1000
 
         # HX areas [m²]: A = kA / U
         U_vals = {
@@ -674,8 +636,6 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
                 "V_dot_comp2": V_dot_comp2,  # m³/h
                 "W_comp1": W_comp1,           # kW
                 "W_comp2": W_comp2,           # kW
-                "W_src_pump": W_src_pump,     # kW
-                "W_snk_pump": W_snk_pump,     # kW
                 "A_src_hx": A_src_hx,         # m²
                 "A_ihx": A_ihx,               # m²
                 "A_snk_hx": A_snk_hx,         # m²
@@ -728,7 +688,7 @@ def simulate_gas_heater(eta_gas=0.90, T_steam_override=None):
         ("Natural gas burner efficiency = 0.9").
     T_steam_override : float, optional
         Sink-steam saturation temperature [deg C]. Defaults to
-        ``T_STEAM_DEFAULT`` (120 °C). The water-side pressure is derived
+        ``T_STEAM_DEFAULT`` (100 °C). The water-side pressure is derived
         from this temperature.
 
     Returns

@@ -104,7 +104,19 @@ _MOTOR_COST = {
 _USD_TO_EUR = 0.85  # approximate 2020 average exchange rate
 
 # --- Centrifugal pump: sized by shaft power [kW] ---
-# C = log10(W_P) + a·W_P² + b·W_P + c  (cost in USD, ref year 2020)
+# Source: Shamoushaki, Niknam, Talluri, Manfrida & Fiaschi (2021),
+#   "Development of Cost Correlations for the Economic Assessment of Power
+#    Plant Equipment", Energies 14(9), 2665. doi:10.3390/en14092665
+#   Eq. (5) and Table 4 (centrifugal pump, carbon steel):
+#       C = log(W_P) + a·W_P² + b·W_P + c            (cost in USD, Q1-2020)
+#       a = -0.03195,  b = 467.2,  c = 2.048e4,  R² = 0.97
+#   Calibration range: 20-3500 kW (140 data points from QUE$TOR Q1-2020 db).
+# CAVEAT: pumps in this study operate at W_P < 1 kW, well below the 20 kW
+# lower bound of the calibration range. The correlation is therefore
+# extrapolated; in this regime the linear+quadratic terms become negligible
+# and the cost is essentially the constant floor (≈ 17.4 kEUR per pump after
+# USD→EUR), making the pump contribution effectively a small fixed cost
+# rather than a duty-driven one.
 _PUMP_COEFF = {"a": -0.03195, "b": 467.2, "c": 2.048e4}
 PUMP_REF_YEAR = 2020
 
@@ -276,18 +288,18 @@ def run_economics(sim, full_load_hours, e1_c_ct_kwh):
 
         # --- Compute PEC for each component (ref-year cost, ref-year tag) ---
         # Each entry is (cost_in_ref_year, ref_year).
+        # Pumps are NOT included: brownfield-retrofit assumption — both the
+        # source-loop circulator and the sink-side feedwater pump are
+        # pre-existing site infrastructure (the latter formerly served the
+        # displaced gas-fired boiler) and are not new equipment in scope.
         PEC_ref = {
             "COMP1":     (pec_compressor(sz["V_dot_comp1"], f1, p_high_c1), COST_REF_YEAR),
             "COMP2":     (pec_compressor(sz["V_dot_comp2"], f2, p_high_c2), COST_REF_YEAR),
-            "SRC_PUMP":  (pec_pump(sz["W_src_pump"]), PUMP_REF_YEAR),
-            "SNK_PUMP":  (pec_pump(sz["W_snk_pump"]), PUMP_REF_YEAR),
             "SRC_HX":    (pec_plate_hx(sz["A_src_hx"], f1, p_high_c1), COST_REF_YEAR),
             "IHX":       (pec_plate_hx(sz["A_ihx"], f1, p_high_c1), COST_REF_YEAR),
             "SNK_HX":    (pec_plate_hx(sz["A_snk_hx"], f2, p_high_c2), COST_REF_YEAR),
             "MOT1":      (pec_motor(sz["W_comp1"], f1, p_high_c1), COST_REF_YEAR),
             "MOT2":      (pec_motor(sz["W_comp2"], f2, p_high_c2), COST_REF_YEAR),
-            "MOT3":      (0.0, COST_REF_YEAR),  # SRC_PUMP motor (included in pump)
-            "MOT4":      (0.0, COST_REF_YEAR),  # SNK_PUMP motor (included in pump)
             "VAL1":      (0.0, COST_REF_YEAR),
             "VAL2":      (0.0, COST_REF_YEAR),
         }
@@ -363,8 +375,12 @@ def run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh,
     co2_price_eur_per_t : float, optional
         CO2 emission price [EUR / tonne CO2]. Multiplied by the CO2 mass
         flow rate from ``sim["m_dot_CO2"]`` (computed from the TESPy
-        combustion-chamber CH4 input via stoichiometry). Default 0 → no
-        CO2 cost (Ommen 2015 baseline).
+        combustion-chamber CH4 input via stoichiometry). The function-
+        level default is ``0.0`` (Ommen 2015 baseline, fuel-only), but
+        ``case_steam_economics.py`` and ``plot_case_steam_economics.py``
+        always call this function with ``co2_price_eur_per_t = BASE_CO2_PRICE``
+        (60 EUR/tCO2 by default), so the gas-reference c_P shown in the
+        pipeline outputs includes the EU ETS / BEHG charge.
 
     Returns
     -------

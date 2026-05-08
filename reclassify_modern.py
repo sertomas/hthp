@@ -1,31 +1,32 @@
 """
-reclassify_modern.py — Post-process case_steam_110.csv with two envelopes
+reclassify_modern.py — Post-process case_steam_<T>.csv with two envelopes
                        (Ommen 2015 strict + Project 68 / Annex 58 modern)
                        and write enriched, sorted CSV views.
 
-The original screen in case_steam_110.py applies Ommen 2015 Table 3 limits
+The original screen in case_steam.py applies Ommen 2015 Table 3 limits
 (p_max 28 / 50 bar, V̇ 5–280 m³/h Type-2, T_disch ≤ 180 °C). Project 68
 (IEA HPT, Nov. 2025) and Annex 58 (2023) document multiple commercial
 compressors operating beyond those limits. This script:
 
-  1. Reads results/case_steam_110/case_steam_110.csv (already produced).
+  1. Reads results/case_steam_<int(T_steam)>/case_steam_<int(T_steam)>.csv
+     (already produced by Stage 1 case_steam.main(T_steam)).
   2. Enriches it with T_evap_c1, T_cond_c1, T_evap_c2, T_cond_c2 derived
      from the saturation properties at the recorded p_low / p_high.
   3. Reclassifies each row under MODERN_COMPRESSOR_SPEC (justified per
      parameter from Project 68 supplier data). NOSOLVE rows (T_crit /
      P_crit / convergence failures) stay NOSOLVE — those are real
      thermodynamic infeasibilities and are not affected by the envelope.
-  4. Writes:
-       - case_steam_110_enriched.csv     (full data + new columns)
-       - case_steam_110_sorted.csv        (sorted by status_modern, COP)
-       - case_steam_110_per_pair.csv      (sorted f1, f2, ls, T_src)
-       - case_steam_110_modern_OK.csv     (rows that become OK under modern)
+  4. Writes (all in the same per-T_steam folder):
+       - case_steam_<T>_enriched.csv     (full data + new columns)
+       - case_steam_<T>_sorted.csv        (sorted by status_modern, COP)
+       - case_steam_<T>_per_pair.csv      (sorted f1, f2, ls, T_src)
+       - case_steam_<T>_modern_OK.csv     (rows that become OK under modern)
 
-Run:
-    python reclassify_modern.py
+Run via main.py (Stage 2) or directly:
+    python reclassify_modern.py            # uses T_STEAM_CASE_DEFAULT
 
 Then re-plot with:
-    python plot_case_steam_110.py --modern
+    python plot_case_steam.py --modern     # also via main.py Stage 3
 """
 
 from __future__ import annotations
@@ -41,8 +42,11 @@ from screen_cascade import OMMEN_P_TOL, T_DISCH_MAX, _envelope_label
 from plot_common import classify_status
 
 
-CSV_IN = os.path.join("results", "case_steam_110", "case_steam_110.csv")
-OUT_DIR = os.path.join("results", "case_steam_110")
+# Module-level path globals are rewritten by ``_paths_for`` at the start of
+# ``main`` for each case-study T_steam; the placeholders below only matter
+# if the helpers below are called before that override.
+CSV_IN = ""
+OUT_DIR = ""
 
 
 def _paths_for(T_steam):
@@ -199,13 +203,16 @@ def main(T_steam=None):
     ----------
     T_steam : float, optional
         Steam temperature to look up the per-T_steam screen output.
-        Defaults to 110 °C (legacy folder).
+        Defaults to ``T_STEAM_CASE_DEFAULT`` (110 °C).
     """
     if T_steam is None:
-        T_steam = 110.0
+        from config import T_STEAM_CASE_DEFAULT
+        T_steam = T_STEAM_CASE_DEFAULT
     csv_in, out_dir = _paths_for(T_steam)
     if not os.path.exists(csv_in):
-        print(f"Could not find {csv_in}. Run case_steam_110.py(T_steam={T_steam}) first.")
+        print(f"Could not find {csv_in}. "
+              f"Run `python main.py --t-steam {int(T_steam)}` (or "
+              f"case_steam.main(T_steam={T_steam})) first.")
         sys.exit(1)
 
     df = pd.read_csv(csv_in)

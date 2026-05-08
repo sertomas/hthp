@@ -2,22 +2,26 @@
 export_design_details.py — Per-design TESPy + exergoeconomic export.
 
 For every OK (modern envelope) design at LS ∈ {0.30, 0.40, 0.50} of the
-steam-at-110 °C case study, re-run simulate_hthp and dump:
+case study, at the requested T_steam, re-run simulate_hthp and dump:
 
-    results/case_steam_110/designs/<f1>_<f2>/LS<XX>_Tsrc<YY>/
+    results/case_steam_<int(T_steam)>/designs/<f1>_<f2>/LS<XX>_Tsrc<YY>/
         connections.csv                    — TESPy state per labeled conn
                                               (m, T, p, h, s, v, e_T/e_M/e_PH)
         components.csv                     — TESPy component parameters
                                               (P, Q, pr, eta_s, kA, ttd, ...)
         qt_diagram.png                     — Q-T profiles for SRC_HX, IHX, SNK_HX
-        logph_diagram.png                  — log(p)-h via fluprodia (0.1–200 bar)
+        logph_diagram.png                  — log(p)-h via fluprodia (1–200 bar)
         exergoeco_components.csv           — C_F, C_P, C_D, Z, c_F, c_P, f, r
         exergoeco_connections_material.csv — exergy + cost (C^T, C^M, C^TOT, c^T,...)
         exergoeco_connections_nonmat.csv   — power/heat connections (C^TOT, c^TOT)
 
-Economics is run at native simulation scale (m_steam = 1 kg/s, ~2.23 MWth)
-with BASE_FULL_LOAD_HOURS / BASE_E1_C from config — same scale that
-case_steam_110_economics.py uses for the headline c_P numbers.
+Economics is run at native simulation scale (m_steam = ``config.M_STEAM``
+kg/s; Q_H = M_STEAM · Δh_sat,water(T_steam)) with BASE_FULL_LOAD_HOURS /
+BASE_E1_C from config — same scale that case_steam_economics.py uses for
+the headline c_P numbers.
+
+T_steam defaults to T_STEAM_CASE_DEFAULT (110 °C) when ``main(T_steam=None)``
+is invoked. main.py drives this stage at 100 / 110 / 120 °C in turn.
 """
 
 from __future__ import annotations
@@ -33,7 +37,7 @@ import pandas as pd
 
 from config import (
     BASE_E1_C, BASE_FULL_LOAD_HOURS,
-    T_STEAM_CASE_110, lift_share_to_T34,
+    T_STEAM_CASE_DEFAULT, lift_share_to_T34,
 )
 from economics import run_economics
 from models import simulate_hthp
@@ -47,10 +51,13 @@ logging.disable(logging.CRITICAL)
 warnings.filterwarnings("ignore")
 
 
-CASE_DIR = os.path.join("results", "case_steam_110")
-ENRICHED_CSV = os.path.join(CASE_DIR, "case_steam_110_enriched.csv")
-DESIGNS_DIR = os.path.join(CASE_DIR, "designs")
-_T_STEAM_CURRENT = 110.0
+# Module-level path globals are rewritten by ``_set_paths_for_T_steam`` at
+# the start of ``main`` for each case-study T_steam; the placeholders below
+# only matter if the helpers below are called before that override.
+CASE_DIR = ""
+ENRICHED_CSV = ""
+DESIGNS_DIR = ""
+_T_STEAM_CURRENT = 0.0
 
 
 def _set_paths_for_T_steam(T_steam):
@@ -209,12 +216,13 @@ HX_TITLES = {
 }
 
 
-# log(p)-h plotting via fluprodia — same approach as the original plot.py.
+# log(p)-h plotting via fluprodia.
 #
 # Uses set_isolines_subcritical(T_min=-40, T_max=T_crit-2) for a clean
 # subcritical isoline set (saturation dome + isobars + isotherms + isenthalps
 # + isentropes), and pins the y-axis to a fixed engineering window
-# (0.1–200 bar) so every design plots on the same scale.
+# (LOGPH_P_MIN_BAR – LOGPH_P_MAX_BAR = 1–200 bar) so every design plots
+# on the same scale.
 
 LOGPH_P_MIN_BAR = 1.0
 LOGPH_P_MAX_BAR = 200.0
@@ -342,12 +350,12 @@ def _export_exergoeco_csvs(sim, out_dir):
 def main(T_steam=None):
     """Export per-design TESPy + exergoeconomic details for one T_steam case."""
     if T_steam is None:
-        T_steam = T_STEAM_CASE_110
+        T_steam = T_STEAM_CASE_DEFAULT
     _set_paths_for_T_steam(T_steam)
 
     if not os.path.exists(ENRICHED_CSV):
         print(f"Could not find {ENRICHED_CSV}. "
-              f"Run case_steam_110.py and reclassify_modern.py first.")
+              f"Run `python main.py --t-steam {int(T_steam)}` first.")
         sys.exit(1)
     os.makedirs(DESIGNS_DIR, exist_ok=True)
 
@@ -395,7 +403,7 @@ def main(T_steam=None):
             comp_df.to_csv(os.path.join(out_dir, "components.csv"), index=False)
 
             title = (f"{f1}/{f2}, LS = {ls_pct}%, T_src = {int(T_src)} °C, "
-                     f"T_steam = 110 °C  |  COP = {sim['COP']:.2f}, "
+                     f"T_steam = {int(T_steam)} °C  |  COP = {sim['COP']:.2f}, "
                      f"ε = {sim['epsilon']:.3f}")
             _plot_qt(sim, os.path.join(out_dir, "qt_diagram.png"), title_extra=title)
             _plot_logph(sim, os.path.join(out_dir, "logph_diagram.png"), title_extra=title)

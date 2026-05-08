@@ -1,15 +1,11 @@
 """
 plot_common.py — Helpers shared by the cascade-screening plotters.
 
-Originally extracted from ``plot_screen_cascade.py`` to support the
-``case_steam_110.py`` study, which adds a 4-state classification
-(OK / V_ONLY / HARD / NOSOLVE) so V̇-only Ommen-envelope violations can
-be rendered as "operable per IEA HPT Annex 58 evidence" rather than
-lumped together with hard pressure / discharge-temperature failures.
-
-The existing ``plot_screen_cascade.py`` is not rewritten; it keeps its
-own copies of ``_is_true`` and ``_slice_grid`` to remain isolated from
-this case-study extension.
+Provides the 4-state classification (OK / V_ONLY / HARD / NOSOLVE) used
+by ``case_steam.py``, ``reclassify_modern.py`` and the Stage 3 grid
+plotters. V̇-only Ommen-envelope violations are kept distinct from hard
+pressure / discharge-temperature failures so they can be rendered as
+"operable per IEA HPT Annex 58 evidence" rather than lumped together.
 """
 
 from __future__ import annotations
@@ -21,7 +17,7 @@ from __future__ import annotations
 #           Operable per Annex 58 supplier evidence: real machines exist
 #           above Ommen 2015's 5–280 m³/h Type-2 V_max (e.g. Mayekawa, Hybrid
 #           Energy, Heaten at 1–5 MWth). Cost extrapolation is the only
-#           risk, mitigated by Annex 58 €/kW band cross-checks (step 5).
+#           risk, mitigated by Annex 58 €/kW band cross-checks (Stage 5).
 # HARD    — p_OK_c1, p_OK_c2, T_OK_c1 or T_OK_c2 False. Pressure rating or
 #           oil-degradation issue — genuinely problematic.
 # NOSOLVE — pre-classified thermodynamic infeasibility or TESPy non-convergence.

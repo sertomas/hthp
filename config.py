@@ -6,7 +6,6 @@ sensitivity ranges and output paths) in one place so that downstream
 modules never hard-code magic numbers.
 """
 
-import json
 import os
 
 import numpy as np
@@ -15,11 +14,6 @@ from CoolProp.CoolProp import PropsSI
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
-CACHE_DIR = os.path.join(RESULTS_DIR, "cache")
-SIM_CACHE_DIR = os.path.join(CACHE_DIR, "sims")
-SIM_INDEX_FILE = os.path.join(CACHE_DIR, "sim_index.json")
-GAS_HEATER_CACHE_FILE = os.path.join(CACHE_DIR, "gas_heater.json")
-ANALYSIS_JSON_FILE = os.path.join(CACHE_DIR, "analysis.json")
 
 # ── Fluid combinations ──────────────────────────────────────────────────────
 # Cycle-2 fluids are restricted to hydrocarbons (R600a, R600). R717 was
@@ -66,8 +60,8 @@ BASE_FULL_LOAD_HOURS = 7500       # h/a (fixed, no sensitivity on this)
 # Source: BDEW Strompreisanalyse (Bundesverband der Energie- und
 # Wasserwirtschaft), 2025 release. The 144 EUR/MWh row in the same table
 # applies to large industry (70-150 GWh/a); a steam-generating HTHP at
-# 1 MWth and 7500 h/a draws ~2.5 GWh_el/a, which sits inside the medium-
-# industry band → 159 EUR/MWh is the appropriate full-cost reference.
+# Q_H ≈ 2.2 MW and 7500 h/a, COP ≈ 3, draws ~5.5 GWh_el/a, which sits inside
+# the medium-industry band → 159 EUR/MWh is the appropriate full-cost reference.
 BASE_E1_C = 159.0                 # EUR/MWh
 
 # ── Gas heater reference parameters ──────────────────────────────────────────
@@ -97,32 +91,34 @@ E1_C_RANGE = np.arange(100, 201, 10.0)  # EUR/MWh — brackets BASE_E1_C = 159
 PRICE_SENS_FRAC_RANGE = np.arange(-0.5, 0.51, 0.1)  # -50 % … +50 %
 
 # ── Steam temperature (sink boundary) ───────────────────────────────────────
-# Two industrial use cases studied: 100 °C (≈ atmospheric steam) and
-# 110 °C (≈ 1.4 bar steam). T_STEAM_DEFAULT is used by the main matrix
-# sweep. The smaller per-T_steam sensitivity sweep covers both values.
+# T_STEAM_DEFAULT is the fallback used by simulate_hthp / simulate_gas_heater
+# when no T_steam_override is passed. The pipeline always passes overrides,
+# so this default is exercised only by ad-hoc programmatic use.
 T_STEAM_DEFAULT = 100.0  # °C
-T_STEAM_RANGE = [100.0, 110.0]  # °C
-T_STEAM = T_STEAM_DEFAULT  # backwards-compatible alias used by other modules
-P_WATER = PropsSI("P", "T", T_STEAM_DEFAULT + 273.15, "Q", 0, "water") / 1e5
 
-# ── Case study: steam at 110 °C, fixed Q_H ───────────────────────────────────
-# Pinned T_steam and nominal heating capacity used by case_steam_110.py. All
-# 9 fluid pairs are scaled to deliver the same Q_H so cross-design comparisons
-# (COP, η_Lorenz, V̇ vs Ommen envelope) share a common denominator. 1 MWth
-# sits inside the dense part of the IEA HPT Annex 58 (2023) supplier capacity
-# distribution (0.5–5 MWth) and lands within Ommen 2015 V̇ tolerance for most
-# fluid pairs — out-of-envelope cases are flagged, not rejected.
-T_STEAM_CASE_110 = 110.0      # °C  (legacy alias; prefer T_STEAM_CASE_DEFAULT)
-T_STEAM_CASE_DEFAULT = 110.0  # °C  used when stage main() is called without
-                              #     a T_steam argument
-Q_H_NOMINAL_KW = 1000.0       # kW heating output
-CAPACITY_MODE_DEFAULT = "fixed_Q_H"   # only mode currently implemented
+# ── Case study: native scale ─────────────────────────────────────────────────
+# All designs are simulated at the same native scale, set by ``M_STEAM`` on
+# the sink side. With M_STEAM = 0.5 kg/s the case study delivers Q_H ≈
+# 1.10–1.13 MWth depending on T_steam (just Δh_vap of water at the saturation
+# pressure). All cost and efficiency metrics are reported at this native scale
+# — no virtual rescaling. Three industrial steam temperatures are studied:
+# 100 °C (≈ atmospheric), 110 °C (≈ 1.4 bar), 120 °C (≈ 2 bar).
+M_STEAM = 0.5                  # kg/s  sink-side steam mass flow (native scale)
+
+T_STEAM_CASE_DEFAULT = 110.0      # °C  default for the single-design fast path in
+                              #     main.py and for stage main() helpers when
+                              #     no T_steam argument is passed
 
 # Run main.py over each of these temperatures when --t-steam=all (default).
 # Output lands under results/case_steam_<int(T)>/ for each one.
 T_STEAMS_TO_RUN = [100.0, 110.0, 120.0]
 # Folder where the cross-T_steam comparison plots are written.
 T_STEAM_COMPARE_DIR_NAME = "case_steam_compare"
+
+
+def m_steam_label():
+    """Display string for the native scale, e.g. ``'m_steam = 0.5 kg/s'``."""
+    return f"m_steam = {M_STEAM:g} kg/s"
 
 
 def p_water_for_T_steam(T_steam_degC):
@@ -159,11 +155,10 @@ T_SOURCE_IN_DEFAULT = 20                     # °C
 #    - "fixed_delta_T": fix T_in and T_out = T_in - SOURCE_DELTA_T (m free)
 #    - "fixed_mass_flow": fix T_in and m = SOURCE_MASS_FLOW (T_out free)
 SOURCE_DELTA_T = 10                          # K (used only in fixed_delta_T mode)
-SOURCE_MASS_FLOW = 30.0                      # kg/s (default for fixed_mass_flow mode;
+SOURCE_MASS_FLOW = 15.0                      # kg/s (default for fixed_mass_flow mode;
                                               # ≈ mean ṁ_src observed under the previous
                                               # ΔT=10 K mode, so designs span similar
                                               # operating points but with T_src,out free)
-SOURCE_MASS_FLOW_RANGE = [20, 30, 40, 50]   # kg/s (sensitivity range)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -179,7 +174,8 @@ def lift_share_to_T34(lift_share, T_source_in, T_steam=None):
     T_source_in : float
         Source water inlet temperature [deg C].
     T_steam : float, optional
-        Sink steam temperature [deg C]. Defaults to ``T_STEAM_DEFAULT``.
+        Sink steam temperature [deg C]. If ``None``, falls back to
+        ``T_STEAM_DEFAULT``.
 
     Returns
     -------
@@ -188,60 +184,3 @@ def lift_share_to_T34(lift_share, T_source_in, T_steam=None):
     """
     T_steam_val = T_STEAM_DEFAULT if T_steam is None else T_steam
     return T_source_in + lift_share * (T_steam_val - T_source_in)
-
-
-def ls_label(lift_share):
-    """
-    Return a human-readable lift share label, e.g. ``"40/60"``.
-
-    Parameters
-    ----------
-    lift_share : float
-        Lower cycle fraction (0–1).
-
-    Returns
-    -------
-    str
-        ``"<lower>/<upper>"`` percentage string.
-    """
-    lower = int(round(lift_share * 100))
-    upper = 100 - lower
-    return f"{lower}/{upper}"
-
-
-# ── JSON serialisation helpers ────────────────────────────────────────────────
-
-class NumpyEncoder(json.JSONEncoder):
-    """JSON encoder that converts numpy types to native Python."""
-
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        return super().default(obj)
-
-
-def sim_cache_folder(f1, f2, ls, T_src, source_mode="fixed_delta_T"):
-    """Return the cache directory for a specific simulation combo."""
-    ls_pct = int(round(ls * 100))
-    base = os.path.join(SIM_CACHE_DIR, f"{f1}_{f2}", f"LS_{ls_pct}_Tsrc_{int(T_src)}")
-    if source_mode != "fixed_delta_T":
-        base += f"_{source_mode}"
-    return base
-
-
-def sim_key_to_str(key):
-    """Encode a (f1, f2, ls, T_src) tuple as a JSON-safe string."""
-    f1, f2, ls, T_src = key
-    return f"{f1}|{f2}|{ls}|{T_src}"
-
-
-def str_to_sim_key(s):
-    """Decode a string key back to a (f1, f2, ls, T_src) tuple."""
-    parts = s.split("|")
-    return (parts[0], parts[1], float(parts[2]), float(parts[3]))

@@ -1,5 +1,6 @@
 """
-Orchestrator — case-study pipeline for steam at 110 °C, Q_H = 1 MWth.
+Orchestrator — case-study pipeline for steam at 100 / 110 / 120 °C, native scale
+(m_steam = ``config.M_STEAM`` kg/s, Q_H = M_STEAM · Δh_vap of water at T_steam).
 
 Two modes:
 
@@ -19,12 +20,16 @@ Two modes:
        python main.py --list-designs        # print all available OK designs
 
 Stages (each can be cached / skipped):
-    1. Screen        — case_steam_110.py    (TESPy 150-case sweep, ~5 min)
-    2. Reclassify    — reclassify_modern.py (post-process, instant)
-    3. Feasibility   — plot_case_steam_110.py (Ommen + modern, instant)
-    4. Economics     — case_steam_110_economics.py (~3 min)
-    5. Eco plots     — plot_case_steam_110_economics.py (instant)
-    6. Per-design    — export_design_details.py (~5 min)
+    1. Screen        — case_steam.py            (TESPy 150-case sweep, ~5 min)
+    2. Reclassify    — reclassify_modern.py     (post-process, instant)
+    3. Feasibility   — plot_case_steam.py       (Ommen + modern, instant)
+    4. Economics     — case_steam_economics.py  (~3 min)
+    5. Per-design    — export_design_details.py (~5 min)
+                       (must run before Stage 6 — produces per-design
+                       exergoeco_components.csv that several economics plots
+                       depend on)
+    6. Eco plots     — plot_case_steam_economics.py (instant)
+    7. Cross-T       — plot_compare_T_steam.py  (after all T_steam cases, instant)
 """
 
 from __future__ import annotations
@@ -83,7 +88,7 @@ def _banner(title: str) -> None:
 
 def stage_screen(T_steam: float = 110.0):
     """1. TESPy 150-case feasibility screen."""
-    from case_steam_110 import main as fn
+    from case_steam import main as fn
     fn(T_steam=T_steam)
 
 
@@ -96,7 +101,7 @@ def stage_reclassify(T_steam: float = 110.0):
 def stage_feasibility_plots(T_steam: float = 110.0):
     """3. Feasibility plots in both Ommen-strict and modern modes."""
     import importlib
-    import plot_case_steam_110 as plot_mod
+    import plot_case_steam as plot_mod
     importlib.reload(plot_mod)
     plot_mod.ENVELOPE_MODE = "ommen"
     plot_mod.main(T_steam=T_steam)
@@ -106,19 +111,25 @@ def stage_feasibility_plots(T_steam: float = 110.0):
 
 def stage_economics(T_steam: float = 110.0):
     """4. Exergoeconomic analysis on OK designs at LS ∈ {0.30, 0.40, 0.50}."""
-    from case_steam_110_economics import main as fn
-    fn(T_steam=T_steam)
-
-
-def stage_economics_plots(T_steam: float = 110.0):
-    """5. c_P heatmap, PEC vs Annex 58, sensitivities."""
-    from plot_case_steam_110_economics import main as fn
+    from case_steam_economics import main as fn
     fn(T_steam=T_steam)
 
 
 def stage_export(T_steam: float = 110.0):
-    """6. Per-design connections / components / Q-T / log(p)-h."""
+    """5. Per-design connections / components / Q-T / log(p)-h.
+
+    Runs BEFORE the economics plots so that the per-design
+    exergoeco_components.csv files exist when stage_economics_plots tries
+    to read them — otherwise the cost-breakdown / Tsatsaronis / ranking
+    plots silently fall back to a placeholder.
+    """
     from export_design_details import main as fn
+    fn(T_steam=T_steam)
+
+
+def stage_economics_plots(T_steam: float = 110.0):
+    """6. c_P heatmap, PEC vs Annex 58, cost breakdown, sensitivities."""
+    from plot_case_steam_economics import main as fn
     fn(T_steam=T_steam)
 
 
@@ -158,7 +169,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
     from CoolProp.CoolProp import PropsSI
 
     from config import (
-        BASE_E1_C, BASE_FULL_LOAD_HOURS, Q_H_NOMINAL_KW, T_STEAM_CASE_110,
+        BASE_E1_C, BASE_FULL_LOAD_HOURS, M_STEAM, T_STEAM_CASE_DEFAULT,
         lift_share_to_T34, p_water_for_T_steam,
     )
     from models import simulate_hthp
@@ -168,7 +179,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
     )
 
     if T_steam is None:
-        T_steam = T_STEAM_CASE_110
+        T_steam = T_STEAM_CASE_DEFAULT
 
     ls_pct = int(round(ls * 100))
     out_dir = os.path.join(DESIGNS_DIR, f"{f1}_{f2}",
@@ -216,16 +227,17 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
         from economics import run_economics as _run_eco
         eco = _run_eco(sim, BASE_FULL_LOAD_HOURS, BASE_E1_C / 10.0)
         if eco is not None:
-            # 1-MWth-equivalent TCI for Annex 58 comparison
+            # Native-scale TCI/kW (Q_H = M_STEAM · Δh_vap)
             p_pa = p_water_for_T_steam(T_steam) * 1e5
             dh = (PropsSI("H", "P", p_pa, "Q", 1, "water")
                   - PropsSI("H", "P", p_pa, "Q", 0, "water")) / 1e3
-            k_to_1MWth = Q_H_NOMINAL_KW / dh
-            from case_steam_110_economics import _pec_at_scale
-            pec_1MW = _pec_at_scale(sim, k_to_1MWth)
+            Q_H_native_kW = dh * M_STEAM
+            from case_steam_economics import _pec_native
+            pec = _pec_native(sim)
             summary["c_P"] = eco["c_P"]
             summary["Z_sum"] = eco["Z_sum"]
-            summary["TCI_1MW [EUR/kW]"] = pec_1MW["TOTAL"] / Q_H_NOMINAL_KW
+            summary["Q_H_kW"] = Q_H_native_kW
+            summary["TCI [EUR/kW]"] = pec["TOTAL"] / Q_H_native_kW
 
     if verbose:
         print(f"  TESPy converged ({sim_dt:.1f}s)  COP={sim['COP']:.3f}  "
@@ -235,7 +247,8 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
         if run_economics and "c_P" in summary:
             print(f"  c_P = {summary['c_P']:.2f} EUR/GJ   "
                   f"Z_sum = {summary['Z_sum']:.2f} EUR/h   "
-                  f"TCI/kW = {summary['TCI_1MW [EUR/kW]']:.0f} EUR/kW   "
+                  f"Q_H = {summary['Q_H_kW']:.0f} kW   "
+                  f"TCI/kW = {summary['TCI [EUR/kW]']:.0f} EUR/kW   "
                   f"(@ e1={BASE_E1_C} EUR/MWh, FLH={BASE_FULL_LOAD_HOURS} h/a)")
 
     return summary
@@ -249,7 +262,7 @@ def list_designs() -> None:
         sys.exit(1)
     df = pd.read_csv(ECON_BASE_CSV).sort_values(by=["c_P [EUR/GJ]"])
     cols = ["pair", "ls", "T_src", "COP", "eta_Lorenz",
-            "c_P [EUR/GJ]", "PEC_1MW [EUR/kW]"]
+            "c_P [EUR/GJ]", "PEC [EUR/kW]"]
     available = [c for c in cols if c in df.columns]
     print(f"\nAll OK (modern) designs at LS ∈ {{0.30, 0.40, 0.50}} — "
           f"{len(df)} total, sorted by c_P:\n")
@@ -265,7 +278,9 @@ def run_pipeline_for_T(args, T_steam: float) -> None:
     ENRICHED_CSV  = paths["ENRICHED_CSV"]
     ECON_BASE_CSV = paths["ECON_BASE_CSV"]
 
-    _banner(f"HTHP CASE STUDY — steam at {T_steam:.0f} °C, Q_H = 1 MWth")
+    from config import m_steam_label
+    _banner(f"HTHP CASE STUDY — steam at {T_steam:.0f} °C, "
+            f"native scale ({m_steam_label()})")
 
     if args.only_plots:
         if not os.path.exists(ENRICHED_CSV):
@@ -274,10 +289,10 @@ def run_pipeline_for_T(args, T_steam: float) -> None:
         _run_stage("Stage 3: Feasibility plots", stage_feasibility_plots,
                    False, "", T_steam=T_steam)
         if os.path.exists(ECON_BASE_CSV):
-            _run_stage("Stage 5: Economics plots", stage_economics_plots,
+            _run_stage("Stage 6: Economics plots", stage_economics_plots,
                        False, "", T_steam=T_steam)
         else:
-            print("\n── Stage 5 skipped (no cached economics CSV)")
+            print("\n── Stage 6 skipped (no cached economics CSV)")
         return
 
     # Stage 1: TESPy 150-case screen
@@ -296,20 +311,25 @@ def run_pipeline_for_T(args, T_steam: float) -> None:
 
     # Stage 4: economics
     skip_eco = args.skip_economics and os.path.exists(ECON_BASE_CSV)
-    _run_stage("Stage 4: Exergoeconomic analysis (74 designs, ~3 min)",
+    _run_stage("Stage 4: Exergoeconomic analysis "
+               "(OK designs at LS ∈ {0.30, 0.40, 0.50}, ~3 min)",
                stage_economics,
                skip_eco, "cached economics CSV present", T_steam=T_steam)
 
-    # Stage 5: economics plots
-    _run_stage("Stage 5: Economics plots (instant)",
-               stage_economics_plots, False, "", T_steam=T_steam)
-
-    # Stage 6: per-design export (heaviest after stage 1)
+    # Stage 5: per-design export (run BEFORE plots so the cost-breakdown
+    # / Tsatsaronis / ranking plots have access to the per-design
+    # exergoeco_components.csv files; otherwise those plots get skipped).
     skip_export = args.skip_export or args.no_export
-    _run_stage("Stage 6: Per-design exports — connections / components / "
+    _run_stage("Stage 5: Per-design exports — connections / components / "
                "qt / log(p)-h (~5 min)",
                stage_export,
                skip_export, "--skip-export / --no-export", T_steam=T_steam)
+
+    # Stage 6: economics plots (depends on per-design exergoeco CSVs from
+    # Stage 5 for the C_D + Z, Z-only, Tsatsaronis, ranking, and best-design
+    # plots; falls back gracefully if Stage 5 was skipped).
+    _run_stage("Stage 6: Economics plots (instant)",
+               stage_economics_plots, False, "", T_steam=T_steam)
 
 
 def run_pipeline(args) -> None:
@@ -340,9 +360,11 @@ def run_pipeline(args) -> None:
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 def main():
+    from config import m_steam_label as _msl
     parser = argparse.ArgumentParser(
         description="HTHP case-study pipeline orchestrator "
-                    "(steam ∈ {100, 110, 120} °C, Q_H = 1 MWth, modern envelope).",
+                    f"(steam ∈ {{100, 110, 120}} °C, native scale {_msl()}, "
+                    "modern envelope).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples
