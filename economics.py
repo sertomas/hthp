@@ -25,8 +25,10 @@ COST_REF_YEAR = 2013
 
 # Installation cost factor: TCI = F_INSTALL * PEC
 # Accounts for installation, piping, instrumentation, engineering, contingencies.
-# Value from Ommen et al. (2015), Table 1 (4.16 = sum of CEPCI-aligned
-# direct + indirect installation factors for industrial refrigeration).
+# Value 4.16 originates from Bejan, Tsatsaronis & Moran (1995),
+# "Thermal Design and Optimization" (sum of direct + indirect installation
+# factors for industrial chemical plants); subsequently adopted by Ommen et
+# al. (2015), Table 1, for industrial heat-pump / refrigeration costing.
 F_INSTALL = 4.16
 
 # Gas heater reference case parameters
@@ -143,7 +145,7 @@ def _resolve_cost_type(fluid, p_high_bar=None):
     return cost_type
 
 
-def pec_compressor(V_dot_m3h, fluid, p_high_bar=None):
+def pec_compressor(V_dot_m3h, fluid, p_high_bar=None, eta_vol=1.0):
     """
     Purchased-equipment cost of a compressor (reference-year EUR).
 
@@ -156,6 +158,12 @@ def pec_compressor(V_dot_m3h, fluid, p_high_bar=None):
     p_high_bar : float, optional
         Cycle high-side (discharge) pressure [bar]. Used to route R717 to
         the LP or HP cost row. Ignored for non-R717 fluids.
+    eta_vol : float, optional
+        Compressor volumetric efficiency [-]. The correlation is keyed on
+        the *displaced* (swept) volume rather than the actual suction
+        flow, so the sizing parameter passed into the power law is
+        ``V_dot / eta_vol``. Default 1.0 reproduces the pre-Dincer
+        behaviour (treat suction flow as displaced volume).
 
     Returns
     -------
@@ -164,7 +172,7 @@ def pec_compressor(V_dot_m3h, fluid, p_high_bar=None):
     """
     cost_type = _resolve_cost_type(fluid, p_high_bar)
     PEC_W, X_W, alpha = _COMP_COST[cost_type]
-    return PEC_W * (V_dot_m3h / X_W) ** alpha
+    return PEC_W * (V_dot_m3h / (eta_vol * X_W)) ** alpha
 
 
 def pec_motor(W_kW, fluid, p_high_bar=None):
@@ -293,8 +301,10 @@ def run_economics(sim, full_load_hours, e1_c_ct_kwh):
         # pre-existing site infrastructure (the latter formerly served the
         # displaced gas-fired boiler) and are not new equipment in scope.
         PEC_ref = {
-            "COMP1":     (pec_compressor(sz["V_dot_comp1"], f1, p_high_c1), COST_REF_YEAR),
-            "COMP2":     (pec_compressor(sz["V_dot_comp2"], f2, p_high_c2), COST_REF_YEAR),
+            "COMP1":     (pec_compressor(sz["V_dot_comp1"], f1, p_high_c1,
+                                        eta_vol=sz.get("eta_vol_comp1", 1.0)), COST_REF_YEAR),
+            "COMP2":     (pec_compressor(sz["V_dot_comp2"], f2, p_high_c2,
+                                        eta_vol=sz.get("eta_vol_comp2", 1.0)), COST_REF_YEAR),
             "SRC_HX":    (pec_plate_hx(sz["A_src_hx"], f1, p_high_c1), COST_REF_YEAR),
             "IHX":       (pec_plate_hx(sz["A_ihx"], f1, p_high_c1), COST_REF_YEAR),
             "SNK_HX":    (pec_plate_hx(sz["A_snk_hx"], f2, p_high_c2), COST_REF_YEAR),

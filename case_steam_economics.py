@@ -273,8 +273,10 @@ def _pec_native(sim):
     p_high_c2 = max(p["p"] for p in sim["cycle_states"]["cycle2"]["points"])
 
     PEC_ref = {
-        "COMP1":     (pec_compressor(sz["V_dot_comp1"], f1, p_high_c1), COST_REF_YEAR),
-        "COMP2":     (pec_compressor(sz["V_dot_comp2"], f2, p_high_c2), COST_REF_YEAR),
+        "COMP1":     (pec_compressor(sz["V_dot_comp1"], f1, p_high_c1,
+                                    eta_vol=sz.get("eta_vol_comp1", 1.0)), COST_REF_YEAR),
+        "COMP2":     (pec_compressor(sz["V_dot_comp2"], f2, p_high_c2,
+                                    eta_vol=sz.get("eta_vol_comp2", 1.0)), COST_REF_YEAR),
         "SRC_HX":    (pec_plate_hx(sz["A_src_hx"], f1, p_high_c1), COST_REF_YEAR),
         "IHX":       (pec_plate_hx(sz["A_ihx"], f1, p_high_c1), COST_REF_YEAR),
         "SNK_HX":    (pec_plate_hx(sz["A_snk_hx"], f2, p_high_c2), COST_REF_YEAR),

@@ -23,6 +23,7 @@ from tespy.networks import Network
 from exerpy import ExergyAnalysis
 from exerpy.parser.from_tespy.tespy_parser import to_exerpy
 
+from calculate_heatexchanger_area import get_hex_area
 from config import (
     M_STEAM,
     SOURCE_DELTA_T,
@@ -46,17 +47,12 @@ pinch = 5  # K
 p_water = p_water_for_T_steam(T_STEAM_DEFAULT)  # bar
 T_water_sat = T_STEAM_DEFAULT  # °C — by definition of T_STEAM_DEFAULT
 
-# Absolute pressure drops [bar].
-# Brownfield-retrofit assumption: the source-water and sink-water (feedwater)
-# loops are pre-existing site infrastructure (the existing source-loop
-# circulator and the displaced gas-boiler feedwater pump remain in place),
-# so the heat-pump scope incurs *no* new pressure drop on the water sides.
-# Refrigerant-side Δp values are kept at typical plate-HX simulation defaults
-# (Jensen 2015, Mateu-Royo 2019; calibration reference pending).
-_DP = {
-    "SRC_HX": (0.0,   0.175),   # (source water side, refrigerant side)
-    "IHX":    (0.300, 0.150),   # (C1 condensing, C2 evaporating)
-    "SNK_HX": (0.250, 0.0),     # (C2 condensing, sink water side)
+# Pressure drops are neglected on every heat-exchanger side (pr = 1.0),
+# both for the refrigerant streams and for the source/sink water streams.
+_PR = {
+    "SRC_HX": (1.0, 1.0),   # (source water side, refrigerant side)
+    "IHX":    (1.0, 1.0),   # (C1 condensing, C2 evaporating)
+    "SNK_HX": (1.0, 1.0),   # (C2 condensing, sink water side)
 }
 
 # Compressor high-side pressure limits per Ommen et al. (2015), Table 3.
@@ -119,40 +115,6 @@ def _check_ommen_p_limit(fluid, p_high, cycle_label):
               f"= {p_max_eff:.1f} bar (Ommen 2015 limit + tol)")
         return False
     return True
-
-
-# U-Value Lookup Table [W/(m2K)]
-# R744 (CO2) values for transcritical gas cooling are typically a touch
-# higher than HC condensing duty thanks to its thermophysical properties —
-# 1800-2200 W/(m²·K) is a representative range for plate gas coolers.
-_U_VALUES = {
-    "R717":  {"R717": 2200, "R290": 2000, "R1270": 2000, "R600a": 1600, "R600": 1400, "R744": 1800, "Water": 2000},
-    "R290":  {"R717": 2000, "R290": 1800, "R1270": 1800, "R600a": 1400, "R600": 1200, "R744": 1500, "Water": 1700},
-    "R1270": {"R717": 2000, "R290": 1800, "R1270": 1800, "R600a": 1400, "R600": 1200, "R744": 1500, "Water": 1700},
-    "R600a": {"R717": 1600, "R290": 1400, "R1270": 1400, "R600a": 1100, "R600": 1000, "R744": 1300, "Water": 1300},
-    "R600":  {"R717": 1400, "R290": 1200, "R1270": 1200, "R600a": 1000, "R600": 900,  "R744": 1100, "Water": 1100},
-    "R744":  {"R717": 1800, "R290": 1500, "R1270": 1500, "R600a": 1300, "R600": 1100, "R744": 1500, "Water": 2000},
-    "Water": {"R717": 1800, "R290": 1500, "R1270": 1500, "R600a": 1100, "R600": 1000, "R744": 2000, "Water": 1500},
-}
-
-
-def get_U(fluid_a, fluid_b):
-    """
-    Look up the overall heat-transfer coefficient for a fluid pair.
-
-    Parameters
-    ----------
-    fluid_a : str
-        Hot-side fluid name (e.g. ``"R717"``, ``"Water"``).
-    fluid_b : str
-        Cold-side fluid name.
-
-    Returns
-    -------
-    float
-        Overall heat-transfer coefficient U [W/(m^2 K)].
-    """
-    return _U_VALUES[fluid_a][fluid_b]
 
 
 def get_source_delta_T(T_src_in):
@@ -351,8 +313,11 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         - **ean** — ``ExergyAnalysis`` object (needed by ``run_economics``).
         - **COP**, **epsilon**, **E_F**, **E_P**, **E_D** — performance.
         - **fluid_cycle1**, **fluid_cycle2** — fluid names.
-        - **sizing** — dict of component sizing values.
-        - **U_values** — dict of heat-transfer coefficients [W/(m^2 K)].
+        - **sizing** — dict of component sizing values (HX areas are
+          computed by ``get_hex_area`` from
+          ``calculate_heatexchanger_area``: section-by-section
+          integration of ``A = Q / (LMTD * U)`` with U selected from the
+          phase-pair lookup ``U_VALUES``).
         - **qt_sections** — pre-computed Q-T section data (kW, °C) ready
           for plotting; see ``_extract_qt_sections``.
         - **cycle_states** — state-point data (for log(p)-h diagrams).
@@ -463,7 +428,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         nw.add_conns(e1, e2, e3, e4, e5)
 
         # Source water boundary conditions
-        # No Ref constraint on c13.p needed: with SRC_HX dp1=0 (water side),
+        # No Ref constraint on c13.p needed: with SRC_HX pr1=1 (water side),
         # c13.p is automatically equal to c11.p, and adding the Ref would
         # over-determine the system.
         if source_mode == "fixed_mass_flow":
@@ -495,7 +460,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         c34.set_attr(T=T_evap_c2_val)
 
         # Sink water boundary conditions.
-        # No Ref constraint on c43.p: with SNK_HX dp2=0 (water/steam side),
+        # No Ref constraint on c43.p: with SNK_HX pr2=1 (water/steam side),
         # c43.p is automatically equal to c41.p (both at the steam saturation
         # pressure), and adding the Ref would over-determine the system.
         c41.set_attr(fluid={"water": 1}, p=p_water_val, x=0, m=M_STEAM)
@@ -508,9 +473,9 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # pumps", Int. J. Refrigeration 55, 168-182 — Table 1.
         comp1.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
         comp2.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
-        src_hx.set_attr(dp1=_DP["SRC_HX"][0], dp2=_DP["SRC_HX"][1])
-        ihx.set_attr(dp1=_DP["IHX"][0], dp2=_DP["IHX"][1])
-        snk_hx.set_attr(dp1=_DP["SNK_HX"][0], dp2=_DP["SNK_HX"][1])
+        src_hx.set_attr(pr1=_PR["SRC_HX"][0], pr2=_PR["SRC_HX"][1])
+        ihx.set_attr(pr1=_PR["IHX"][0], pr2=_PR["IHX"][1])
+        snk_hx.set_attr(pr1=_PR["SNK_HX"][0], pr2=_PR["SNK_HX"][1])
         motor1.set_attr(eta=0.95)    # Ommen 2015, Table 1
         motor2.set_attr(eta=0.95)    # Ommen 2015, Table 1
 
@@ -600,23 +565,35 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # --- Sizing data for cost correlations ---
         # Compressor inlet volumetric flow [m³/h]: V_dot = m / rho * 3600
         rho_21 = PropsSI("D", "H", c21.h.val * 1000, "P", c21.p.val * 1e5, fluid_cycle1)
+        rho_22 = PropsSI("D", "H", c22.h.val * 1000, "P", c22.p.val * 1e5, fluid_cycle1)
         rho_31 = PropsSI("D", "H", c31.h.val * 1000, "P", c31.p.val * 1e5, fluid_cycle2)
+        rho_32 = PropsSI("D", "H", c32.h.val * 1000, "P", c32.p.val * 1e5, fluid_cycle2)
         V_dot_comp1 = c21.m.val / rho_21 * 3600  # m³/h
         V_dot_comp2 = c31.m.val / rho_31 * 3600  # m³/h
+
+        # Volumetric efficiency, Dincer (2010) reciprocating-compressor form:
+        #   η_vol = 1 − R·(v_in/v_out − 1)
+        # equivalently (since v = 1/ρ, so v_in/v_out = ρ_out/ρ_in):
+        #   η_vol = 1 − R·(ρ_disch/ρ_suc − 1)
+        # The clearance-volume ratio R = 0.06 follows Hoang et al. (2025),
+        # which adopts this value with the same Dincer formula. η_vol enters
+        # the Ommen compressor PEC correlation as V_dot / η_vol (the
+        # displaced volume the compressor must be sized for, not just the
+        # actual suction flow).
+        CLEARANCE_RATIO = 0.06
+        eta_vol_comp1 = 1.0 - CLEARANCE_RATIO * ((rho_22 / rho_21) - 1.0)
+        eta_vol_comp2 = 1.0 - CLEARANCE_RATIO * ((rho_32 / rho_31) - 1.0)
 
         # Shaft powers [kW] (TESPy P.val is in W)
         W_comp1 = abs(comp1.P.val) / 1000
         W_comp2 = abs(comp2.P.val) / 1000
 
-        # HX areas [m²]: A = kA / U
-        U_vals = {
-            "SRC_HX": get_U("Water", fluid_cycle1),
-            "IHX": get_U(fluid_cycle1, fluid_cycle2),
-            "SNK_HX": get_U(fluid_cycle2, "Water"),
-        }
-        A_src_hx = src_hx.kA.val / U_vals["SRC_HX"]
-        A_ihx = ihx.kA.val / U_vals["IHX"]
-        A_snk_hx = snk_hx.kA.val / U_vals["SNK_HX"]
+        # HX areas [m²]: section-by-section integration of A = Q / (LMTD * U),
+        # with U selected per section from the phase-pair lookup in
+        # calculate_heatexchanger_area.U_VALUES (Ommen 2015 + assumptions).
+        A_src_hx = get_hex_area(src_hx)
+        A_ihx = get_hex_area(ihx)
+        A_snk_hx = get_hex_area(snk_hx)
 
         return {
             "ean": ean,
@@ -634,13 +611,14 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
             "sizing": {
                 "V_dot_comp1": V_dot_comp1,  # m³/h
                 "V_dot_comp2": V_dot_comp2,  # m³/h
+                "eta_vol_comp1": eta_vol_comp1,  # [-]
+                "eta_vol_comp2": eta_vol_comp2,  # [-]
                 "W_comp1": W_comp1,           # kW
                 "W_comp2": W_comp2,           # kW
                 "A_src_hx": A_src_hx,         # m²
                 "A_ihx": A_ihx,               # m²
                 "A_snk_hx": A_snk_hx,         # m²
             },
-            "U_values": U_vals,
             "exerpy_data": exerpy_data,
             "qt_sections": qt_sections,
             "cycle_states": {
