@@ -82,6 +82,27 @@ BASE_GAS_C = 47                  # EUR/MWh
 # Set to 0 to reproduce the Ommen baseline.
 BASE_CO2_PRICE = 60.0            # EUR/tCO2
 
+# ── Economic levelization parameters ─────────────────────────────────────────
+# Effective discount rate and plant lifetime for the TRR / CELF computation.
+# Held constant in this study; passed into exerpy.EconomicAnalysis and to the
+# fuel-cost levelization helper _celf() in economics.py.
+I_EFF       = 0.10              # 1/a  effective discount rate
+N_YEARS     = 20                # years, plant lifetime
+
+# ── Annual nominal cost escalation rates (TRR / CELF) ────────────────────────
+# Applied via the constant-escalation levelization factor CELF(r_n).
+# OMC: 2 %/a, general inflation.
+# Electricity and gas: 2 %/a and 3 %/a — derived from the BDEW
+# Strompreisanalyse 04/2026 for German medium-industry consumers
+# (160k-20M kWh/a), pre-2022 trend (2015-2020). The 2022-2023 energy-crisis
+# spike is treated as a one-off event and excluded from the long-term trend.
+# CO2: 5 %/a — forward EU-ETS / BEHG trajectory, conservative midpoint
+# between the soft (~3 %/a) and tight (~8 %/a) policy scenarios.
+R_N_OM      = 0.02              # 1/a   O&M escalation
+R_N_EL      = 0.02              # 1/a   electricity escalation
+R_N_GAS     = 0.03              # 1/a   natural-gas escalation
+R_N_CO2     = 0.05              # 1/a   CO2 emission-price escalation
+
 # ── Sensitivity ranges ───────────────────────────────────────────────────────
 E1_C_RANGE = np.arange(100, 201, 10.0)  # EUR/MWh — brackets BASE_E1_C = 159
 

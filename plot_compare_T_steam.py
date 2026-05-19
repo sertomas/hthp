@@ -152,7 +152,7 @@ def plot_cP_best_vs_T_steam(per_T: dict[float, dict], out_dir: str):
                 color="black", linestyle="--", linewidth=2.0,
                 marker="s", markersize=10, markerfacecolor="none",
                 markeredgecolor="black", markeredgewidth=1.5,
-                label=rf"Gas+CO₂ ref ($c_\mathrm{{gas}}={BASE_GAS_C:.0f}$ EUR/MWh)")
+                label=rf"Gas+CO₂ ref ($c_\mathrm{{gas,0}}={BASE_GAS_C:.0f}$ EUR/MWh)")
 
     ax.set_xticks(sorted(per_T))
     ax.set_xlabel(r"Steam temperature $T_\mathrm{steam}$  [°C]")
@@ -485,13 +485,13 @@ def plot_sensitivity_FLH_cel(out_dir: str,
     # Base-case marker
     ax.plot(BASE_E1_C, BASE_FULL_LOAD_HOURS, marker="o", color="red",
             markersize=11, markeredgecolor="white",
-            label=rf"Base ($c_\mathrm{{el}}={BASE_E1_C:.0f}$ EUR/MWh, "
+            label=rf"Base ($c_\mathrm{{el,0}}={BASE_E1_C:.0f}$ EUR/MWh, "
                   rf"$\tau={BASE_FULL_LOAD_HOURS:.0f}$ h/a)  "
                   rf"$c_P={cP_base:.1f}$")
     ax.axhline(BASE_FULL_LOAD_HOURS, color="grey", linewidth=0.5, alpha=0.4)
     ax.axvline(BASE_E1_C, color="grey", linewidth=0.5, alpha=0.4)
 
-    ax.set_xlabel(r"Electricity price $c_\mathrm{el}$  [EUR/MWh]")
+    ax.set_xlabel(r"Electricity price $c_\mathrm{el,0}$  [EUR/MWh]")
     ax.set_ylabel(r"Full-load hours $\tau$  [h/a]")
     ax.set_xlim(e1_axis.min(), e1_axis.max())
     ax.set_ylim(flh_axis.min(), flh_axis.max())
@@ -512,7 +512,7 @@ def plot_sensitivity_FLH_cel(out_dir: str,
     ax.legend(handles=handles, loc="lower right", fontsize=fs(8), framealpha=0.92)
 
     fig.suptitle(
-        rf"$c_P^{{\mathrm{{HTHP}}}}(\tau, c_\mathrm{{el}})$ — "
+        rf"$c_P^{{\mathrm{{HTHP}}}}(\tau, c_\mathrm{{el,0}})$ — "
         rf"{ref_pair}, $\mathit{{LS}}={int(ref_ls*100)}$ %, "
         rf"$T_\mathrm{{src,in}}={int(ref_T_src)}$ °C, "
         rf"$T_\mathrm{{steam}}={int(T_steam_for_break_even)}$ °C",

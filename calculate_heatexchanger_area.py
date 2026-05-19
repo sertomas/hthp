@@ -58,9 +58,17 @@ _PHASE_TO_INT = {"l": 0, "tp": 1, "g": 2}
 def _phase_at_step(conn, h_step):
     """Phase index (0=liquid, 1=two-phase, 2=gas) at enthalpy ``h_step``
     for the stream described by ``conn`` (pressure / fluid taken from the
-    connection; pr=1 in every HX so pressure is constant along the side)."""
+    connection; pr=1 in every HX so pressure is constant along the side).
+
+    Falls back to two-phase (1) when CoolProp returns ``"state not
+    recognised"``, which happens for some refrigerants (notably R717 near
+    saturation at high reduced pressure) when the enthalpy step lands
+    exactly on the saturation boundary. The two-phase fallback is
+    consistent with ``_phase_per_section`` snapping straddled sections to
+    the bordering single-phase value, which keeps the sizing conservative.
+    """
     label = phase_mix_ph(conn.p.val_SI, h_step, conn.fluid_data, conn.mixing_rule)
-    return _PHASE_TO_INT[label]
+    return _PHASE_TO_INT.get(label, 1)
 
 
 def _phase_per_section(phase_steps):

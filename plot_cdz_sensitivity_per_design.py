@@ -32,10 +32,16 @@ import pandas as pd
 from matplotlib.colors import ListedColormap
 
 from config import (
-    BASE_E1_C, BASE_FULL_LOAD_HOURS, BASE_GAS_C, T_STEAMS_TO_RUN,
+    BASE_E1_C, BASE_FULL_LOAD_HOURS, BASE_GAS_C, R_N_EL, T_STEAMS_TO_RUN,
     case_data_dir, case_plots_dir, case_results_dir, m_steam_label,
 )
-from economics import F_INSTALL
+from economics import F_INSTALL, _celf
+
+# Levelized first-year electricity price [EUR/MWh]. Multiplying c_el,0 by the
+# CELF at the electricity escalation rate r_n,el yields the constant equivalent
+# annual price over the 20-year horizon; this is the value used in the LCOH
+# definition stated in the paper.
+C_EL_LEV = BASE_E1_C * _celf(R_N_EL)
 from plot_common import (
     COL_DOUBLE_IN, COL_SINGLE_IN,
     GROUP_COLORS, GROUP_ORDER, GROUP_MEMBERS,
@@ -320,7 +326,10 @@ def _load_LCOH_grid(data_dir, pair, ls_vals, t_src_vals):
     rather than by the steam-exergy product, so the resulting number is
     directly comparable to retail steam or boiler prices.
 
-        LCOH [EUR/MWh_th] = (1000 · Ż_sum / Q_H) + c_el / COP
+        LCOH [EUR/MWh_th] = (1000 · Ż_sum / Q_H) + c_el,lev / COP
+
+    where c_el,lev = c_el,0 · CELF(r_n,el) is the levelized electricity
+    price (constant equivalent annual value over the 20-year horizon).
     """
     grid = np.full((len(ls_vals), len(t_src_vals)), np.nan)
     base_csv = os.path.join(data_dir, "economics_base.csv")
@@ -340,7 +349,7 @@ def _load_LCOH_grid(data_dir, pair, ls_vals, t_src_vals):
             Z_sum = float(r["Z_sum [EUR/h]"])
             if Q_H <= 0 or COP <= 0:
                 continue
-            grid[i, j] = 1000.0 * Z_sum / Q_H + BASE_E1_C / COP
+            grid[i, j] = 1000.0 * Z_sum / Q_H + C_EL_LEV / COP
     return grid
 
 

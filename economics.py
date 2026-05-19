@@ -14,7 +14,28 @@ import math
 
 from exerpy import EconomicAnalysis, ExergoeconomicAnalysis
 
-# Cost index ratios (reference year → 2024)
+from config import I_EFF, N_YEARS, R_N_OM, R_N_EL, R_N_GAS, R_N_CO2
+
+
+def _celf(r_n: float, i_eff: float = I_EFF, n: int = N_YEARS) -> float:
+    """End-of-year (BTM textbook) constant-escalation levelization factor.
+
+    Satisfies CELF(0) = 1: with no escalation the levelized rate equals the
+    first-year rate. Multiplying a first-year cost rate by CELF yields the
+    constant-equivalent annual cost rate over ``n`` years at discount rate
+    ``i_eff``, with payments assumed at the end of each operating year.
+
+    Note: ``exerpy.EconomicAnalysis.compute_celf`` uses the begin-of-year
+    convention (CELF(0) = 1 + i_eff). The OMC stream coming back from
+    ``compute_component_costs`` is therefore divided by (1 + i_eff) inside
+    ``run_economics_hthp`` to bring it back to the end-of-year basis, so
+    fuel and O&M are handled consistently.
+    """
+    k = (1.0 + r_n) / (1.0 + i_eff)
+    crf = i_eff * (1.0 + i_eff) ** n / ((1.0 + i_eff) ** n - 1.0)
+    return (1.0 - k ** n) / ((1.0 + i_eff) * (1.0 - k)) * crf
+
+# Cost index ratios (reference year → 2024). CEPCI is published up to 2024.
 _CI_RATIO = {
     2013: 1.4102,   # 2013 → 2024
     2020: 1.3418,   # 2020 → 2024
@@ -22,6 +43,14 @@ _CI_RATIO = {
 
 # Cost correlations reference year
 COST_REF_YEAR = 2013
+
+# Analysis reference year. CEPCI brings each PEC up to 2024; the residual
+# 2024 → ANALYSIS_REF_YEAR step is covered at the same general inflation rate
+# as O&M (R_N_OM = 2 %/a), giving the multiplicative factor below. This puts
+# the PEC in the same nominal-EUR basis as the year-1 fuel prices defined in
+# config.py (BDEW Strompreisanalyse 04/2026, EU-ETS 2026).
+ANALYSIS_REF_YEAR = 2026
+_CEPCI_TO_REF_YEAR = (1.0 + R_N_OM) ** (ANALYSIS_REF_YEAR - 2024)   # = 1.0404
 
 # Installation cost factor: TCI = F_INSTALL * PEC
 # Accounts for installation, piping, instrumentation, engineering, contingencies.
@@ -280,7 +309,12 @@ def run_economics(sim, full_load_hours, e1_c_ct_kwh):
         - **exergoeco** — ``ExergoeconomicAnalysis`` object.
     """
     try:
-        e1_c = e1_c_ct_kwh / 0.36  # convert ct/kWh → EUR/GJ
+        e1_c = e1_c_ct_kwh / 0.36  # convert ct/kWh → EUR/GJ_ex (electricity = pure exergy, first-year)
+        # Levelize the electricity cost over the plant lifetime so that the
+        # exergoeconomic balance uses a constant-equivalent annual fuel cost.
+        # End-of-year convention (BTM textbook); the same convention is
+        # enforced on the OMC stream below via the (1 + i_eff) correction.
+        e1_c_lev = e1_c * _celf(R_N_EL)
 
         ean = sim["ean"]
         sz = sim["sizing"]
@@ -313,32 +347,40 @@ def run_economics(sim, full_load_hours, e1_c_ct_kwh):
             "VAL1":      (0.0, COST_REF_YEAR),
             "VAL2":      (0.0, COST_REF_YEAR),
         }
-        PEC = {k: F_INSTALL * cost * _CI_RATIO[ref_year]
+        PEC = {k: F_INSTALL * cost * _CI_RATIO[ref_year] * _CEPCI_TO_REF_YEAR
                for k, (cost, ref_year) in PEC_ref.items()}
 
         # --- PEC → Z [EUR/h] via EconomicAnalysis ---
         # f_tci = 1.0 disables exerpy's internal 6.32× module factor: the
-        # values we pass are already TCI (= F_INSTALL × bare_PEC × CI), so
-        # the only PEC→TCI multiplier in the chain is Ommen's 4.16, applied
+        # values we pass are already TCI in 2026 EUR
+        # (= F_INSTALL × bare_PEC × _CI_RATIO × _CEPCI_TO_REF_YEAR), so the
+        # only PEC→TCI multiplier in the chain is Ommen's 4.16, applied
         # exactly once at PEC_ref → PEC time. Without this, exerpy would
         # multiply by another 6.32 → 26.3× double-count of installation.
         econ = EconomicAnalysis({
             "tau": full_load_hours,
-            "i_eff": 0.10,
-            "n": 20,
-            "r_n": 0.02,
+            "i_eff": I_EFF,
+            "n": N_YEARS,
+            "r_n": R_N_OM,
             "f_tci": 1.0,
         })
         comp_names = list(PEC.keys())
         PEC_list = list(PEC.values())
         OMC_relative = [0.03] * len(PEC_list)
-        _, _, Z_total = econ.compute_component_costs(PEC_list, OMC_relative)
+        Z_CC_list, Z_OM_begin, _ = econ.compute_component_costs(PEC_list, OMC_relative)
+        # exerpy levelizes OMC under the begin-of-year payment convention
+        # (CELF(0) = 1 + i_eff). Re-scale to end-of-year (BTM textbook) so
+        # that O&M and fuel cost streams use the same convention as `_celf`
+        # above. The CRF-annualized capital part Z_CC is convention-
+        # independent and stays as-is.
+        Z_OM_list = [z / (1.0 + I_EFF) for z in Z_OM_begin]
+        Z_total = [zcc + zom for zcc, zom in zip(Z_CC_list, Z_OM_list)]
 
         # --- Build cost dict for exergoeconomic analysis ---
         cost_dict = {}
         for name, z in zip(comp_names, Z_total):
             cost_dict[f"{name}_Z"] = z
-        cost_dict["e1_c"] = e1_c
+        cost_dict["e1_c"] = e1_c_lev
         cost_dict["11_c"] = 0.0   # source water inlet — free reservoir
         cost_dict["13_c"] = 0.0   # source water outlet — free disposal (loss with c_L = 0)
         cost_dict["41_c"] = 0.0
@@ -397,7 +439,7 @@ def run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh,
     dict
         Keys: **c_P** [EUR/GJ], **Z_sum** [EUR/h] (always 0 under retrofit).
     """
-    gas_c = gas_c_ct_kwh / 0.36  # convert ct/kWh → EUR/GJ_LHV
+    gas_c = gas_c_ct_kwh / 0.36  # convert ct/kWh → EUR/GJ_LHV (first-year)
     del full_load_hours  # unused under retrofit assumption; kept for API parity
 
     # ── Hourly cost rates that the exergoeco balance needs ──────────────
@@ -405,12 +447,18 @@ def run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh,
     E_F_GJ_per_h   = sim["E_F"]   * 3600 / 1e9   # GJ_chemical-exergy/h
     E_P_GJ_per_h   = sim["E_P"]   * 3600 / 1e9   # GJ_exergy/h
 
-    # Fuel cost rate: gas at LHV price + CO2 charge.
-    C_fuel_only = gas_c * Q_gas_GJ_per_h                # EUR/h
-    m_dot_CO2 = sim.get("m_dot_CO2", 0.0)               # kg/s
-    m_CO2_t_per_h = m_dot_CO2 * 3600.0 / 1000.0         # tCO2/h
-    C_CO2_hourly = co2_price_eur_per_t * m_CO2_t_per_h  # EUR/h
-    C_F_hourly = C_fuel_only + C_CO2_hourly             # EUR/h
+    # Levelize gas and CO2 prices independently — the two streams escalate at
+    # different nominal rates over the plant lifetime (see config.R_N_GAS,
+    # config.R_N_CO2). End-of-year (BTM) convention, matching `_celf`.
+    celf_gas = _celf(R_N_GAS)
+    celf_co2 = _celf(R_N_CO2)
+
+    # Fuel cost rate: gas at LHV price + CO2 charge, both levelized.
+    C_fuel_only = gas_c * Q_gas_GJ_per_h * celf_gas               # EUR/h
+    m_dot_CO2 = sim.get("m_dot_CO2", 0.0)                         # kg/s
+    m_CO2_t_per_h = m_dot_CO2 * 3600.0 / 1000.0                   # tCO2/h
+    C_CO2_hourly = co2_price_eur_per_t * m_CO2_t_per_h * celf_co2 # EUR/h
+    C_F_hourly = C_fuel_only + C_CO2_hourly                       # EUR/h
 
     # Convert to a per-GJ-exergy price on stream g2 so the exergoeconomic
     # chain can propagate it. Polluter-pays-via-the-fuel formulation: the

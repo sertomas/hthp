@@ -49,7 +49,7 @@ from config import (
     lift_share_to_T34, m_steam_label, p_water_for_T_steam,
 )
 from economics import (
-    F_INSTALL, _CI_RATIO, COST_REF_YEAR,
+    F_INSTALL, _CI_RATIO, _CEPCI_TO_REF_YEAR, COST_REF_YEAR,
     pec_compressor, pec_motor, pec_plate_hx,
     run_economics,
 )
@@ -285,7 +285,11 @@ def _pec_native(sim):
         "MOT1":      (pec_motor(sz["W_comp1"], f1, p_high_c1), COST_REF_YEAR),
         "MOT2":      (pec_motor(sz["W_comp2"], f2, p_high_c2), COST_REF_YEAR),
     }
-    pec = {k_: F_INSTALL * cost * _CI_RATIO[ref] for k_, (cost, ref) in PEC_ref.items()}
+    # Apply CEPCI escalation to the analysis-reference year (e.g. 2024 → 2026
+    # at r_n_OM = 2 %/a) so PEC_total in this breakdown is in the same
+    # nominal-EUR basis as the Z values computed inside run_economics_hthp.
+    pec = {k_: F_INSTALL * cost * _CI_RATIO[ref] * _CEPCI_TO_REF_YEAR
+           for k_, (cost, ref) in PEC_ref.items()}
     pec["TOTAL"] = sum(pec.values())
     return pec
 

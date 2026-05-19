@@ -55,22 +55,26 @@ Key boundary conditions:
 ```
 .
 ├── main.py                            Pipeline orchestrator + single-design fast path
-├── config.py                          Central configuration (fluids, economics, sweeps)
+├── config.py                          Central configuration (fluids, economics, sweeps, path helpers)
 ├── models.py                          TESPy + exergy: simulate_hthp, simulate_gas_heater
-├── economics.py                       PEC correlations, run_economics, run_economics_gas_heater
+├── economics.py                       PEC correlations, CELF levelization, run_economics(_gas_heater)
+├── calculate_heatexchanger_area.py    Section-wise HX area sizing (per phase / per stream)
 │
 ├── case_steam.py                      Stage 1: 150-case TESPy feasibility screen (per T_steam)
 ├── reclassify_modern.py               Stage 2: relabel screen output under modern envelopes
 ├── plot_case_steam.py                 Stage 3: feasibility / COP / T_disch / p_high grids
 │
 ├── case_steam_economics.py            Stage 4: exergoeconomic analysis on OK designs
-├── plot_case_steam_economics.py       Stage 5: c_P heatmap, PEC vs Annex 58, sensitivities
-│
-├── export_design_details.py           Stage 6: per-design connections / components / Q-T / log(p)-h
+├── export_design_details.py           Stage 5: per-design connections / components / Q-T / log(p)-h
+├── plot_case_steam_economics.py       Stage 6: c_P heatmap, PEC vs Annex 58, sensitivities
 ├── plot_compare_T_steam.py            Stage 7: cross-T_steam comparison (after all 3 cases)
 │
 ├── plot_common.py                     Shared 4-state classification + plotting helpers
 ├── screen_cascade.py                  Ommen 2015 envelope helpers (used by stages 1 + 2)
+│
+├── plot_cP_Tsrc_Tsteam.py             Standalone: per-pair c_P heatmap over (T_src,in, T_steam)
+├── plot_cdz_sensitivity_per_design.py Standalone: per-pair Z+C_D and c_P heatmaps inside designs/
+├── migrate_layout.py                  One-shot: migrate legacy economics/ folder to data/+plots/+gas_heater/
 │
 ├── requirements.txt
 └── results/                           Output (see "Output structure" below)
@@ -172,6 +176,12 @@ All tuneable parameters live in [config.py](config.py):
 | `BASE_E1_C` | `159` EUR/MWh | Industrial electricity (BDEW 2025, medium consumer) |
 | `BASE_GAS_C` | `47` EUR/MWh | Natural gas wholesale (BDEW THE Day-Ahead, end-April 2026) |
 | `BASE_CO2_PRICE` | `60` EUR/tCO2 | EU ETS / BEHG midpoint, valid from 2026-01-01 |
+| `I_EFF` | `0.10` 1/a | Effective discount rate (TRR / CELF) |
+| `N_YEARS` | `20` a | Plant lifetime |
+| `R_N_OM` | `0.02` 1/a | O&M nominal escalation (also drives CEPCI 2024 → 2026) |
+| `R_N_EL` | `0.02` 1/a | Electricity nominal escalation (BDEW pre-2022 trend) |
+| `R_N_GAS` | `0.03` 1/a | Natural-gas nominal escalation (BDEW pre-2022 trend) |
+| `R_N_CO2` | `0.05` 1/a | CO2 emission-price nominal escalation (ETS/BEHG midpoint) |
 | `E1_C_RANGE` | 100–200 step 10 EUR/MWh | Electricity-price sweep |
 | `PRICE_SENS_FRAC_RANGE` | −50 % … +50 % step 10 % | Joint e1/gas price sensitivity |
 
@@ -205,15 +215,30 @@ PEC correlations and exergoeconomic analysis:
   polynomial scaling to reference-year EUR. Refrigerant-specific via an
   internal cost-type mapping; cost-index adjustment applied in
   `run_economics`.
+- **`_celf(r_n, i_eff, n)`** — constant-escalation levelization factor
+  (Bejan-Tsatsaronis-Moran textbook, end-of-year convention) used to
+  convert first-year fuel cost rates into constant-equivalent annual cost
+  rates over the plant lifetime.
 - **`run_economics(sim, full_load_hours, e1_c_ct_kwh)`** — converts PEC into
   hourly cost rates `Z` via `EconomicAnalysis`, then solves the cost
-  balance via `ExergoeconomicAnalysis`. Returns `c_P` [EUR/GJ] and
-  `Z_sum` [EUR/h].
+  balance via `ExergoeconomicAnalysis`. Electricity cost is levelized via
+  `_celf(R_N_EL)`. The OMC stream returned by `EconomicAnalysis` uses the
+  begin-of-year convention and is divided by `(1 + I_EFF)` to align it
+  with the end-of-year fuel basis. Returns `c_P` [EUR/GJ] and `Z_sum`
+  [EUR/h].
 - **`run_economics_gas_heater(sim, full_load_hours, gas_c_ct_kwh, co2_price_eur_per_t=0.0)`** —
-  cost balance for the gas reference. The pipeline calls it with
-  `co2_price_eur_per_t = BASE_CO2_PRICE`, so the headline gas c_P includes
-  the carbon charge; passing `0.0` (the function-level default) reproduces
-  Ommen's fuel-only baseline.
+  cost balance for the gas reference. Gas and CO2 prices are levelized
+  independently via `_celf(R_N_GAS)` and `_celf(R_N_CO2)`. The pipeline
+  calls it with `co2_price_eur_per_t = BASE_CO2_PRICE`, so the headline
+  gas c_P includes the carbon charge; passing `0.0` (the function-level
+  default) reproduces Ommen's fuel-only baseline.
+
+PEC cost basis: bare correlation costs are at `COST_REF_YEAR = 2013`,
+escalated to 2024 via the CEPCI ratio in `_CI_RATIO`, then to
+`ANALYSIS_REF_YEAR = 2026` via `_CEPCI_TO_REF_YEAR = (1 + R_N_OM)^2`
+(general inflation at the same rate as OMC). All Z and PEC values stored
+in `economics_*.csv` are therefore in 2026 EUR, matching the year-1
+basis of `BASE_E1_C`, `BASE_GAS_C` and `BASE_CO2_PRICE`.
 
 ### Stage 1 — `case_steam.py`
 
@@ -239,79 +264,161 @@ once in *modern* mode (`_modern` suffix). Instant.
 
 Exergoeconomic analysis on every OK (modern) design at LS ∈ {0.30, 0.40,
 0.50}. Scales each design to 1 MWth for direct Annex 58 (2023) capital-
-cost comparison. Writes `economics/economics_base.csv`,
-`economics_pec_breakdown.csv` and price/utilisation sensitivity CSVs.
-≈ 3 min per T_steam.
+cost comparison. Writes `data/economics_base.csv`,
+`data/economics_pec_breakdown.csv` and price/utilisation sensitivity CSVs
+into the per-T_steam `data/` folder, plus the gas-heater reference dump
+under `gas_heater/`. ≈ 3 min per T_steam.
 
-### Stage 5 — `plot_case_steam_economics.py`
-
-c_P heatmap, PEC-per-kW vs Annex 58 band, PEC component breakdown, c_P
-vs e1 / gas / FLH, ±50 % 2-D price sensitivity, Tsatsaronis improvement-
-priority quadrant, economic vs exergoeconomic ranking, best-design
-dashboard. Instant.
-
-### Stage 6 — `export_design_details.py`
+### Stage 5 — `export_design_details.py`
 
 Per-design dump of TESPy connection / component tables, Q-T diagrams,
 log(p)-h diagrams (via `fluprodia`), and exergoeconomic component /
-material / non-material CSVs. ≈ 5 min per T_steam.
+material / non-material CSVs. Runs **before** the economics plots so
+that the per-design `exergoeco_components.csv` files exist when Stage 6
+reads them for the cost-breakdown, Tsatsaronis, ranking and best-design
+plots — otherwise those plots silently fall back to a placeholder.
+≈ 5 min per T_steam.
+
+### Stage 6 — `plot_case_steam_economics.py`
+
+c_P heatmap, PEC-per-kW vs Annex 58 band, PEC component breakdown, c_P
+vs e1 / gas / FLH, ±50 % 2-D price sensitivity (also tiled across FLH ∈
+{5000, 5500, 6000, 6500, 7000} h/a), best-LS-per-pair (τ, c_el) and
+(τ, c_gas) sensitivities at T_src = 50 °C, Tsatsaronis improvement-
+priority quadrant, economic vs exergoeconomic ranking, LS-choice
+agreement / Pareto / regret bars, and the best-design dashboard. Every
+plot is written twice: once paper-ready (no title) and once with a
+descriptive title appended as `*_titled.pdf`. Instant.
 
 ### Stage 7 — `plot_compare_T_steam.py`
 
-Cross-T_steam comparison plots (best-c_P trends, c_P heatmap across all
-three temperatures). Triggered automatically once `economics_base.csv`
-exists for every T_steam in `T_STEAMS_TO_RUN`.
+Cross-T_steam comparison plots — best-c_P trends, c_P heatmap across all
+three temperatures, fleet-wide exergy-destruction breakdown, and an FLH
+× c_el sensitivity for the best design. Triggered automatically once
+`data/economics_base.csv` exists for every T_steam in `T_STEAMS_TO_RUN`.
+
+### Standalone plotters (run manually)
+
+- **`plot_cP_Tsrc_Tsteam.py`** — per-pair c_P heatmap over (T_src,in,
+  T_steam) with the winning LS annotated in each cell. Writes
+  `cP_heatmap_Tsrc_Tsteam.pdf` (2 × 3 grid) and
+  `cP_heatmap_Tsrc_Tsteam_R717_R600.pdf` (single-panel for the
+  cost-optimal pair) into `results/case_steam_compare/`.
+- **`plot_cdz_sensitivity_per_design.py`** — per-pair Z + C_D breakdown
+  bar charts and a (T_src × LS) c_P heatmap, written inside each pair's
+  `designs/<pair>/` folder.
+- **`migrate_layout.py`** — one-shot helper for the legacy `economics/`
+  layout. Moves `economics/economics_*.csv` → `data/`,
+  `economics/gas_heater/` → `gas_heater/`, deletes stale PNGs, then
+  removes the empty `economics/` folder. Idempotent.
 
 ### Helpers
 
 - **`config.py`** — fluids, sensitivity ranges, economic constants,
-  per-T_steam path helpers (`case_results_dir`, `t_steam_compare_dir`),
+  per-T_steam path helpers (`case_results_dir`, `case_data_dir`,
+  `case_plots_dir`, `case_gas_heater_dir`, `t_steam_compare_dir`),
   `lift_share_to_T34`. Touch-and-rerun is the intended workflow.
 - **`plot_common.py`** — `classify_status` (4-state precedence:
-  `NOSOLVE` ≻ `HARD` ≻ `V_ONLY` ≻ `OK`), `slice_grid`, label shorteners.
+  `NOSOLVE` ≻ `HARD` ≻ `V_ONLY` ≻ `OK`), `slice_grid`, label shorteners,
+  `save_titled_and_paper` (writes every figure twice — paper-ready and
+  `*_titled.pdf`).
 - **`screen_cascade.py`** — Ommen 2015 envelope helpers
   (`COMPRESSOR_SPEC`, `OMMEN_P_TOL`, `T_DISCH_MAX`, `_envelope_label`,
   `_T_from_p_h`, `_pre_classify_failure`). Imported by stages 1 and 2;
   not runnable standalone.
+- **`calculate_heatexchanger_area.py`** — section-wise heat exchanger
+  area sizing. Walks each HX along an enthalpy grid, classifies each
+  section by phase on both sides, and returns per-phase areas. Used by
+  `models.simulate_hthp` to populate `sizing["A_HX"]` for the PEC
+  calculation.
 
 ## Output structure
 
-After a full run, `results/` contains:
+After a full run, `results/` contains the layout below. Plots are PDF
+and each one is written twice — `<name>.pdf` (paper-ready, no title) and
+`<name>_titled.pdf` (with a descriptive title). For brevity only the
+paper-ready filename is listed below; the `_titled.pdf` companion is
+always present.
 
 ```
 results/
 ├── case_steam_100/, case_steam_110/, case_steam_120/
-│   ├── case_steam_<T>.csv               (Stage 1 — raw 150-case screen)
-│   ├── case_steam_<T>_enriched.csv      (Stage 2 — with modern classification)
-│   ├── case_steam_<T>_modern_OK.csv     (Stage 2 — OK subset)
-│   ├── case_steam_<T>_per_pair.csv      (Stage 2 — best per fluid pair)
-│   ├── case_steam_<T>_sorted.csv        (Stage 2 — sorted by c_P proxy)
-│   ├── feasibility_grid[_modern].png    (Stage 3)
-│   ├── cop_grid[_modern].png            (Stage 3)
-│   ├── Tdisch_grid[_modern].png         (Stage 3)
-│   ├── p_high_grid[_modern].png         (Stage 3)
-│   ├── economics/
-│   │   ├── economics_base.csv           (Stage 4 — one row per OK design)
-│   │   ├── economics_pec_breakdown.csv  (Stage 4 — PEC by component)
-│   │   ├── economics_sensitivity_e1.csv (Stage 4 — c_P vs e1)
-│   │   ├── economics_sensitivity_FLH.csv(Stage 4 — c_P vs full-load hours)
-│   │   ├── gas_heater/                  (Stage 4 — reference case)
-│   │   ├── cP_grid.png, PEC_*.png,
-│   │   │   cP_vs_*.png, price_sensitivity_2d*.png,
-│   │   │   tsatsaronis_quadrant.png,
-│   │   │   best_designs_per_T_src.png,
-│   │   │   *_breakdown_*.png            (Stage 5)
-│   └── designs/<F1>_<F2>/LS<pct>_Tsrc<T>/
-│       ├── connections.csv              (Stage 6)
-│       ├── components.csv               (Stage 6)
-│       ├── qt_diagram.png               (Stage 6)
-│       ├── logph_diagram.png            (Stage 6)
-│       ├── exergoeco_components.csv          (Stage 6)
-│       ├── exergoeco_connections_material.csv(Stage 6)
-│       └── exergoeco_connections_nonmat.csv  (Stage 6)
-└── case_steam_compare/                  (Stage 7 — cross-T_steam plots)
-    ├── compare_cP_best_vs_T_steam.png
-    └── compare_cP_heatmap.png
+│   ├── case_steam_<T>.csv                   (Stage 1 — raw 150-case screen)
+│   ├── case_steam_<T>_enriched.csv          (Stage 2 — with modern classification)
+│   ├── case_steam_<T>_modern_OK.csv         (Stage 2 — OK subset)
+│   ├── case_steam_<T>_per_pair.csv          (Stage 2 — best per fluid pair)
+│   ├── case_steam_<T>_sorted.csv            (Stage 2 — sorted by c_P proxy)
+│   │
+│   ├── data/                                (Stage 4 — economics CSVs)
+│   │   ├── economics_base.csv               (one row per OK design)
+│   │   ├── economics_pec_breakdown.csv      (PEC by component)
+│   │   ├── economics_sensitivity_e1.csv     (c_P vs electricity price)
+│   │   └── economics_sensitivity_FLH.csv    (c_P vs full-load hours)
+│   │
+│   ├── gas_heater/                          (Stage 4 — reference case)
+│   │   ├── gas_heater.json
+│   │   ├── connections.csv, components.csv
+│   │   ├── exergy_summary.csv
+│   │   ├── exergoeco_components.csv
+│   │   ├── exergoeco_connections_material.csv
+│   │   └── exergoeco_connections_nonmat.csv
+│   │
+│   ├── designs/<F1>_<F2>/LS<pct>_Tsrc<T>/   (Stage 5 — per-design dumps)
+│   │   ├── connections.csv
+│   │   ├── components.csv
+│   │   ├── qt_diagram.png
+│   │   ├── logph_diagram.png
+│   │   ├── exergoeco_components.csv
+│   │   ├── exergoeco_connections_material.csv
+│   │   └── exergoeco_connections_nonmat.csv
+│   │
+│   └── plots/                               (Stages 3 + 6 — every PDF figure)
+│       ├── feasibility_grid[_modern].pdf            (Stage 3)
+│       ├── cop_grid[_modern].pdf                    (Stage 3)
+│       ├── Tdisch_grid[_modern].pdf                 (Stage 3)
+│       ├── p_high_grid[_modern].pdf                 (Stage 3)
+│       │
+│       ├── cP_heatmap.pdf, LCOH_heatmap.pdf,        (Stage 6)
+│       │   COP_heatmap.pdf, epsilon_heatmap.pdf,
+│       │   T_lift_heatmap.pdf, T_min_lower_heatmap.pdf,
+│       │   T_max_upper_heatmap.pdf,
+│       │   p_max_COMP1_heatmap.pdf, p_max_COMP2_heatmap.pdf,
+│       │   pr_lower_heatmap.pdf, pr_upper_heatmap.pdf,
+│       │   feasibility_ommen_heatmap.pdf,
+│       │   feasibility_thermo_heatmap.pdf
+│       ├── PEC_breakdown.pdf, PEC_per_kW_heatmap.pdf, (Stage 6)
+│       │   TCI_per_kW_heatmap.pdf
+│       ├── cP_sorted_by_T_src.pdf,                  (Stage 6)
+│       │   cP_vs_e1c.pdf, cP_vs_gas.pdf, cP_vs_FLH.pdf,
+│       │   cP_vs_ED_EL_by_Tsrc.pdf
+│       ├── price_sensitivity_2d.pdf,                (Stage 6)
+│       │   price_sensitivity_2d_FLH{5000,…,7000}.pdf,
+│       │   sensitivity_FLH_e1_bestpairs.pdf,
+│       │   sensitivity_FLH_gas_bestpairs.pdf
+│       ├── tsatsaronis_quadrant.pdf,                (Stage 6)
+│       │   economic_vs_exergoeconomic_ranking.pdf,
+│       │   best_designs_per_T_src.pdf,
+│       │   lift_share_vs_T_src.pdf,
+│       │   LS_choice_agreement.pdf, LS_pareto_trade_off.pdf,
+│       │   LS_regret_bars.pdf
+│       └── cost_breakdown_aggregated.pdf,           (Stage 6)
+│           cost_breakdown_per_design.pdf,
+│           z_breakdown_aggregated.pdf,
+│           z_breakdown_per_design.pdf,
+│           z_components_breakdown_per_design.pdf,
+│           CDZ_components_breakdown_per_design.pdf,
+│           ED_components_breakdown_per_design.pdf,
+│           exergy_balance_breakdown_per_design.pdf
+│
+└── case_steam_compare/                      (Stage 7 — cross-T_steam plots)
+    ├── compare_cP_best_vs_T_steam.pdf
+    ├── compare_cP_heatmap.pdf
+    ├── exergy_destruction_base.pdf
+    ├── sensitivity_FLH_cel.pdf
+    ├── cP_heatmap_Tsrc_Tsteam.pdf           (standalone: plot_cP_Tsrc_Tsteam.py)
+    ├── cP_heatmap_Tsrc_Tsteam_R717_R600.pdf (standalone, cost-optimal pair only)
+    ├── cP_vs_Tsrc_per_Tsteam.pdf
+    └── cP_vs_Tsrc_per_Tsteam_R717_R600.pdf
 ```
 
 ## Typical workflows

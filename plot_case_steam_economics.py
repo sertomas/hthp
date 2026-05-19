@@ -265,9 +265,9 @@ def plot_cP_vs_e1(base, sens):
                label=rf"Gas heater @ {BASE_GAS_C:.0f} EUR/MWh, η=0.90"
                      rf"  ($c_P$ = {gas_c_eur_GJ:.0f} EUR/GJ$_{{ex}}$)")
     ax.axvline(BASE_E1_C, color="grey", linestyle=":", alpha=0.6,
-               label=rf"Base $c_\mathrm{{el}} = {BASE_E1_C:.0f}$ EUR/MWh")
+               label=rf"Base $c_\mathrm{{el,0}} = {BASE_E1_C:.0f}$ EUR/MWh")
 
-    ax.set_xlabel(r"Electricity price $c_\mathrm{el}$  [EUR/MWh]")
+    ax.set_xlabel(r"Electricity price $c_\mathrm{el,0}$  [EUR/MWh]")
     ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
     fig.suptitle(
         rf"$c_P$ vs electricity price — 12 cheapest designs  "
@@ -1375,8 +1375,8 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
         ax.axhline(BASE_GAS_C, color="gray", linewidth=0.5, alpha=0.4)
         ax.axvline(BASE_E1_C, color="gray", linewidth=0.5, alpha=0.4)
 
-        ax.set_xlabel(r"$c_\mathrm{el}$  [EUR/MWh]")
-        ax.set_ylabel(r"$c_\mathrm{gas}$  [EUR/MWh]")
+        ax.set_xlabel(r"$c_\mathrm{el,0}$  [EUR/MWh]")
+        ax.set_ylabel(r"$c_\mathrm{gas,0}$  [EUR/MWh]")
         # Pair name on line 1, operating point on line 2 — at fs(8) the
         # second line fits in the ~2 in panel width without overlap.
         ax.set_title(
@@ -1399,14 +1399,14 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
                    label=r"Break-even  ($c_P^{\,\mathrm{HTHP}} = c_P^{\,\mathrm{gas}}$)"),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="red",
                    markeredgecolor="white", markersize=10,
-                   label=rf"Base prices  ($c_\mathrm{{el}}={BASE_E1_C:.0f}$ "
-                         rf"EUR/MWh, $c_\mathrm{{gas}}={BASE_GAS_C:.0f}$ EUR/MWh)"),
+                   label=rf"Base prices  ($c_\mathrm{{el,0}}={BASE_E1_C:.0f}$ "
+                         rf"EUR/MWh, $c_\mathrm{{gas,0}}={BASE_GAS_C:.0f}$ EUR/MWh)"),
     ]
     fig.legend(handles=legend_handles, loc="lower center", ncol=2,
                fontsize=fs(10), frameon=False, bbox_to_anchor=(0.5, 0.0))
 
     fig.suptitle(
-        rf"$c_P^{{\,\mathrm{{HTHP}}}}$ vs $c_\mathrm{{el}}$, $c_\mathrm{{gas}}$  "
+        rf"$c_P^{{\,\mathrm{{HTHP}}}}$ vs $c_\mathrm{{el,0}}$, $c_\mathrm{{gas,0}}$  "
         rf"($\tau = {full_load_hours:.0f}$ h/a, "
         rf"$T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
         fontsize=fs(10), fontweight="bold", y=0.965,
@@ -1418,6 +1418,248 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
         else:
             fname = f"price_sensitivity_2d_FLH{int(full_load_hours)}.pdf"
     save_titled_and_paper(fig, PLOTS_DIR, fname.removesuffix(".pdf"))
+    plt.close(fig)
+
+
+# ── Plot: globally best design per pair, FLH-coupled sensitivities ───────
+#
+# Two companion plots, both styled exactly like ``plot_price_sensitivity_2d``
+# (2×3 grid of viridis filled contours, shared vmin/vmax across panels,
+# white-edged red base marker, dashed break-even contour, right-hand
+# colourbar, bottom legend):
+#
+#   * ``plot_FLH_e1_bestpairs``  — c_P^HTHP(τ, c_el) at base c_gas
+#   * ``plot_FLH_gas_bestpairs`` — c_P^HTHP(τ) tiled against c_gas axis
+#
+# Per-pair design selection mirrors ``plot_price_sensitivity_2d``: the row
+# with the lowest c_P across all (LS, T_src,in) combinations at base prices.
+# The chosen T_src,in is surfaced in each panel title alongside LS, so the
+# reader can see at a glance which source temperature optimises each pair.
+
+def _best_design_per_pair(base: pd.DataFrame) -> pd.DataFrame:
+    """Per pair: globally cheapest design at base prices (any LS, any T_src)."""
+    return (base.sort_values("c_P [EUR/GJ]")
+                 .drop_duplicates(subset=["pair"], keep="first"))
+
+
+def _affine_flh(sens_flh_sub: pd.DataFrame):
+    """Fit c_P(τ) = a + b/τ from a single-design FLH sweep."""
+    flh = sens_flh_sub["full_load_hours [h/a]"].astype(float).values
+    cP = sens_flh_sub["c_P [EUR/GJ]"].astype(float).values
+    b, a = np.polyfit(1.0 / flh, cP, 1)
+    return a, b
+
+
+def plot_FLH_e1_bestpairs(base, sens, sens_flh,
+                           fname="sensitivity_FLH_e1_bestpairs"):
+    """2×3 grid: c_P^HTHP(τ, c_el) per pair (globally best design)."""
+    best = _best_design_per_pair(base)
+    if best.empty:
+        print(f"  ! no base rows; skipping {fname}.")
+        return
+
+    e1_axis = np.linspace(BASE_E1_C * 0.5, BASE_E1_C * 1.5, 21)
+    flh_axis = np.linspace(5000.0, 8000.0, 26)
+    gas_cP = _gas_reference_cP()      # constant in this 2-D plane
+
+    hthp_per_pair = {}   # pair -> (Z[2D over flh × e1], ls, T_src)
+    for _, r in best.iterrows():
+        pair = r["pair"]
+        ls = float(r["ls"]); T_src = float(r["T_src"])
+        sub_e1 = sens[(sens["pair"] == pair)
+                       & np.isclose(sens["ls"], ls)
+                       & np.isclose(sens["T_src"], T_src)]
+        sub_flh = sens_flh[(sens_flh["pair"] == pair)
+                            & np.isclose(sens_flh["ls"], ls)
+                            & np.isclose(sens_flh["T_src"], T_src)]
+        if sub_e1.empty or sub_flh.empty:
+            continue
+        slope_e1, _ = np.polyfit(sub_e1["e1_c [EUR/MWh]"],
+                                  sub_e1["c_P [EUR/GJ]"], 1)
+        a_flh, b_flh = _affine_flh(sub_flh)
+        cP_tau = a_flh + b_flh / flh_axis
+        Z = (cP_tau[:, None]
+              + slope_e1 * (e1_axis[None, :] - BASE_E1_C))
+        hthp_per_pair[pair] = (Z, ls, T_src)
+
+    if not hthp_per_pair:
+        print(f"  ! no usable sensitivity rows for any pair; skipping {fname}.")
+        return
+
+    all_vals = np.concatenate([Z.ravel() for Z, _, _ in hthp_per_pair.values()])
+    vmin, vmax = float(np.nanmin(all_vals)), float(np.nanmax(all_vals))
+    levels = np.linspace(vmin, vmax, 12)
+
+    n = len(hthp_per_pair)
+    ncols = 3
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(COL_DOUBLE_IN, 3.4 * nrows),
+                              squeeze=False)
+    axes_flat = axes.flatten()
+    X, Y = np.meshgrid(e1_axis, flh_axis)
+
+    cf = None
+    for idx, pair in enumerate(sorted(hthp_per_pair)):
+        ax = axes_flat[idx]
+        Z, ls, T_src = hthp_per_pair[pair]
+        cf = ax.contourf(X, Y, Z, levels=levels, cmap="viridis",
+                          vmin=vmin, vmax=vmax, extend="both")
+        try:
+            ax.contour(X, Y, Z - gas_cP, levels=[0.0],
+                       colors="white", linewidths=2.8)
+            ax.contour(X, Y, Z - gas_cP, levels=[0.0],
+                       colors="black", linewidths=1.4, linestyles="--")
+        except ValueError:
+            pass
+
+        ax.plot(BASE_E1_C, BASE_FULL_LOAD_HOURS, marker="o", color="red",
+                markersize=10, markeredgecolor="white", zorder=5)
+        ax.axhline(BASE_FULL_LOAD_HOURS, color="gray", linewidth=0.5, alpha=0.4)
+        ax.axvline(BASE_E1_C, color="gray", linewidth=0.5, alpha=0.4)
+
+        ax.set_xlabel(r"$c_\mathrm{el,0}$  [EUR/MWh]")
+        ax.set_ylabel(r"$\tau$  [h/a]")
+        ax.set_title(
+            f"{pair}\n"
+            rf"$\mathit{{LS}}={int(ls*100)}$ %, "
+            rf"$T_\mathrm{{src,in}}={int(T_src)}$ °C",
+            fontsize=fs(8), linespacing=1.3,
+        )
+
+    for idx in range(n, nrows * ncols):
+        axes_flat[idx].set_visible(False)
+
+    fig.tight_layout(rect=[0, 0.05, 0.92, 0.91], w_pad=1.8, h_pad=2.5)
+    cbar_ax = fig.add_axes([0.94, 0.10, 0.014, 0.78])
+    fig.colorbar(cf, cax=cbar_ax,
+                 label=r"$c_P^{\,\mathrm{HTHP}}$  [EUR/GJ$_{ex}$]")
+
+    legend_handles = [
+        plt.Line2D([0], [0], color="black", linestyle="--", linewidth=1.4,
+                   label=rf"Break-even  ($c_P^{{\,\mathrm{{HTHP}}}} = "
+                         rf"c_P^{{\,\mathrm{{gas}}}}={gas_cP:.1f}$)"),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="red",
+                   markeredgecolor="white", markersize=10,
+                   label=rf"Base  ($c_\mathrm{{el,0}}={BASE_E1_C:.0f}$ EUR/MWh, "
+                         rf"$\tau={BASE_FULL_LOAD_HOURS:.0f}$ h/a)"),
+    ]
+    fig.legend(handles=legend_handles, loc="lower center", ncol=2,
+               fontsize=fs(10), frameon=False, bbox_to_anchor=(0.5, 0.0))
+
+    fig.suptitle(
+        rf"$c_P^{{\,\mathrm{{HTHP}}}}$ vs $\tau$, $c_\mathrm{{el,0}}$  "
+        rf"(globally cheapest design per pair, "
+        rf"$T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold", y=0.965,
+    )
+    save_titled_and_paper(fig, PLOTS_DIR, fname)
+    plt.close(fig)
+
+
+def plot_FLH_gas_bestpairs(base, sens_flh,
+                            fname="sensitivity_FLH_gas_bestpairs"):
+    """2×3 grid: c_P^HTHP(τ) vs c_gas per pair (globally best design).
+
+    c_P^HTHP is FLH-dependent but c_gas-independent (HTHP burns no gas),
+    so the heatmap appears as horizontal bands in each panel; the dashed
+    break-even contour curves as c_gas rises and the gas-side c_P catches up.
+    """
+    best = _best_design_per_pair(base)
+    if best.empty:
+        print(f"  ! no base rows; skipping {fname}.")
+        return
+
+    gas_axis = np.linspace(BASE_GAS_C * 0.5, BASE_GAS_C * 3.0, 26)
+    flh_axis = np.linspace(5000.0, 8000.0, 26)
+    gas_cP_1d = np.array([_gas_reference_cP_at(g) for g in gas_axis])
+
+    hthp_per_pair = {}   # pair -> (cP_tau[len(flh_axis)], ls, T_src)
+    for _, r in best.iterrows():
+        pair = r["pair"]
+        ls = float(r["ls"]); T_src = float(r["T_src"])
+        sub_flh = sens_flh[(sens_flh["pair"] == pair)
+                            & np.isclose(sens_flh["ls"], ls)
+                            & np.isclose(sens_flh["T_src"], T_src)]
+        if sub_flh.empty:
+            continue
+        a_flh, b_flh = _affine_flh(sub_flh)
+        cP_tau = a_flh + b_flh / flh_axis
+        hthp_per_pair[pair] = (cP_tau, ls, T_src)
+
+    if not hthp_per_pair:
+        print(f"  ! no usable FLH sensitivity rows for any pair; "
+              f"skipping {fname}.")
+        return
+
+    all_vals = np.concatenate([cP for cP, _, _ in hthp_per_pair.values()])
+    vmin, vmax = float(np.nanmin(all_vals)), float(np.nanmax(all_vals))
+    levels = np.linspace(vmin, vmax, 12)
+
+    n = len(hthp_per_pair)
+    ncols = 3
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(COL_DOUBLE_IN, 3.4 * nrows),
+                              squeeze=False)
+    axes_flat = axes.flatten()
+    X, Y = np.meshgrid(gas_axis, flh_axis)
+    gas_field = np.tile(gas_cP_1d[None, :], (len(flh_axis), 1))
+
+    cf = None
+    for idx, pair in enumerate(sorted(hthp_per_pair)):
+        ax = axes_flat[idx]
+        cP_tau, ls, T_src = hthp_per_pair[pair]
+        Z = np.tile(cP_tau[:, None], (1, len(gas_axis)))
+
+        cf = ax.contourf(X, Y, Z, levels=levels, cmap="viridis",
+                          vmin=vmin, vmax=vmax, extend="both")
+        try:
+            ax.contour(X, Y, Z - gas_field, levels=[0.0],
+                       colors="white", linewidths=2.8)
+            ax.contour(X, Y, Z - gas_field, levels=[0.0],
+                       colors="black", linewidths=1.4, linestyles="--")
+        except ValueError:
+            pass
+
+        ax.plot(BASE_GAS_C, BASE_FULL_LOAD_HOURS, marker="o", color="red",
+                markersize=10, markeredgecolor="white", zorder=5)
+        ax.axhline(BASE_FULL_LOAD_HOURS, color="gray", linewidth=0.5, alpha=0.4)
+        ax.axvline(BASE_GAS_C, color="gray", linewidth=0.5, alpha=0.4)
+
+        ax.set_xlabel(r"$c_\mathrm{gas,0}$  [EUR/MWh]")
+        ax.set_ylabel(r"$\tau$  [h/a]")
+        ax.set_title(
+            f"{pair}\n"
+            rf"$\mathit{{LS}}={int(ls*100)}$ %, "
+            rf"$T_\mathrm{{src,in}}={int(T_src)}$ °C",
+            fontsize=fs(8), linespacing=1.3,
+        )
+
+    for idx in range(n, nrows * ncols):
+        axes_flat[idx].set_visible(False)
+
+    fig.tight_layout(rect=[0, 0.05, 0.92, 0.91], w_pad=1.8, h_pad=2.5)
+    cbar_ax = fig.add_axes([0.94, 0.10, 0.014, 0.78])
+    fig.colorbar(cf, cax=cbar_ax,
+                 label=r"$c_P^{\,\mathrm{HTHP}}$  [EUR/GJ$_{ex}$]")
+
+    legend_handles = [
+        plt.Line2D([0], [0], color="black", linestyle="--", linewidth=1.4,
+                   label=r"Break-even  ($c_P^{\,\mathrm{HTHP}} = c_P^{\,\mathrm{gas}}$)"),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="red",
+                   markeredgecolor="white", markersize=10,
+                   label=rf"Base  ($c_\mathrm{{gas,0}}={BASE_GAS_C:.0f}$ EUR/MWh, "
+                         rf"$\tau={BASE_FULL_LOAD_HOURS:.0f}$ h/a)"),
+    ]
+    fig.legend(handles=legend_handles, loc="lower center", ncol=2,
+               fontsize=fs(10), frameon=False, bbox_to_anchor=(0.5, 0.0))
+
+    fig.suptitle(
+        rf"$c_P^{{\,\mathrm{{HTHP}}}}$ vs $\tau$, $c_\mathrm{{gas,0}}$  "
+        rf"(globally cheapest design per pair, "
+        rf"$T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold", y=0.965,
+    )
+    save_titled_and_paper(fig, PLOTS_DIR, fname)
     plt.close(fig)
 
 
@@ -1964,20 +2206,37 @@ def main(T_steam=None):
         print("Plotting system exergy balance (E_P / E_L / E_D) ...")
         plot_exergy_balance_breakdown(base)
         print("Plotting Tsatsaronis improvement-priority quadrant per fluid pair ...")
-        plot_tsatsaronis_quadrant(base)
+        try:
+            plot_tsatsaronis_quadrant(base)
+        except Exception as e:
+            print(f"  ! plot_tsatsaronis_quadrant failed ({type(e).__name__}: {e}); skipping.")
         print("Plotting economic vs exergoeconomic ranking ...")
-        plot_economic_vs_exergoeconomic_ranking(base)
+        try:
+            plot_economic_vs_exergoeconomic_ranking(base)
+        except Exception as e:
+            print(f"  ! plot_economic_vs_exergoeconomic_ranking failed ({type(e).__name__}: {e}); skipping.")
         print("Plotting best designs per T_src dashboard ...")
-        plot_best_designs_per_T_src(base, cdz)
+        try:
+            plot_best_designs_per_T_src(base, cdz)
+        except Exception as e:
+            print(f"  ! plot_best_designs_per_T_src failed ({type(e).__name__}: {e}); skipping.")
         print("Plotting LS-criterion comparison (agreement / Pareto / regret) ...")
-        plot_LS_choice_agreement(base, z_only)
-        plot_LS_pareto_trade_off(base, z_only)
-        plot_LS_regret_bars(base, z_only)
+        try:
+            plot_LS_choice_agreement(base, z_only)
+            plot_LS_pareto_trade_off(base, z_only)
+            plot_LS_regret_bars(base, z_only)
+        except Exception as e:
+            print(f"  ! LS-criterion plots failed ({type(e).__name__}: {e}); skipping.")
     print("Plotting lift-share trends vs T_src per fluid pair ...")
     plot_lift_share_vs_T_src(base)
 
     print("Plotting ±50 % e1/gas 2-D price sensitivity with break-even ...")
     plot_price_sensitivity_2d(base, sens)
+
+    print("Plotting best-design-per-pair sensitivity (τ, c_el) ...")
+    plot_FLH_e1_bestpairs(base, sens, sens_flh)
+    print("Plotting best-design-per-pair sensitivity (τ, c_gas) ...")
+    plot_FLH_gas_bestpairs(base, sens_flh)
 
     if sens_flh is not None and not sens_flh.empty:
         flh_values = sorted(sens_flh["full_load_hours [h/a]"].unique())
