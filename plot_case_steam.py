@@ -40,12 +40,15 @@ from matplotlib.colors import ListedColormap, LogNorm
 
 from config import T_STEAM_CASE_DEFAULT, m_steam_label
 from plot_common import (
+    COL_DOUBLE_IN,
     STATUS_COLORS,
     STATUS_ORDER,
     classify_status,
     nosolve_short,
     reason_short,
+    save_titled_and_paper,
     slice_grid,
+    fs,
 )
 
 
@@ -66,19 +69,19 @@ ENVELOPE_MODE = "ommen"  # overridden by CLI
 # only matter if the helpers below are called before that override.
 CSV_PATH = ""
 CSV_PATH_MODERN = ""
-OUT_DIR = ""
+PLOTS_DIR = ""
 _T_STEAM_CURRENT = 0.0   # set at the same time, used by suptitle strings
 
 
 def _set_paths_for_T_steam(T_steam):
     """Rewrite the module-level path globals for a different T_steam."""
-    global CSV_PATH, CSV_PATH_MODERN, OUT_DIR, _T_STEAM_CURRENT
-    from config import case_results_dir
-    out_dir = case_results_dir(T_steam)
+    global CSV_PATH, CSV_PATH_MODERN, PLOTS_DIR, _T_STEAM_CURRENT
+    from config import case_results_dir, case_plots_dir
+    case_dir = case_results_dir(T_steam)
     tag = f"case_steam_{int(T_steam)}"
-    CSV_PATH = os.path.join(out_dir, f"{tag}.csv")
-    CSV_PATH_MODERN = os.path.join(out_dir, f"{tag}_enriched.csv")
-    OUT_DIR = out_dir
+    CSV_PATH = os.path.join(case_dir, f"{tag}.csv")
+    CSV_PATH_MODERN = os.path.join(case_dir, f"{tag}_enriched.csv")
+    PLOTS_DIR = case_plots_dir(T_steam)
     _T_STEAM_CURRENT = T_steam
 
 
@@ -152,7 +155,7 @@ def _panel_axes(ls_vals, n_cols=None):
     rows = max(1, (n + cols - 1) // cols)
     fig, axes = plt.subplots(
         rows, cols,
-        figsize=(4.0 * cols, 4.6 * rows + 1.4),
+        figsize=(COL_DOUBLE_IN, 3.0 * rows + 0.8),
         squeeze=False,
     )
     return fig, axes, rows, cols
@@ -161,10 +164,10 @@ def _panel_axes(ls_vals, n_cols=None):
 def _set_panel_ticks(ax, pair_order, T_src_order, *, show_y=True):
     ax.set_xticks(range(len(T_src_order)))
     ax.set_xticklabels([f"{T:g}" for T in T_src_order])
-    ax.set_xlabel("T_source_in [°C]")
+    ax.set_xlabel(r"$T_\mathrm{src,in}$  [°C]")
     if show_y:
         ax.set_yticks(range(len(pair_order)))
-        ax.set_yticklabels(pair_order, fontsize=9)
+        ax.set_yticklabels(pair_order, fontsize=fs(9))
     else:
         ax.set_yticks(range(len(pair_order)))
         ax.set_yticklabels([])
@@ -218,12 +221,12 @@ def plot_feasibility_grid(df: pd.DataFrame):
             for jj in range(len(T_src_order)):
                 ax.text(jj, ii, annot[ii, jj],
                         ha="center", va="center",
-                        fontsize=7.5, color=annot_color[ii, jj])
+                        fontsize=fs(7.5), color=annot_color[ii, jj])
 
         _set_panel_ticks(ax, pair_order, T_src_order, show_y=(j == 0))
-        ax.set_title(f"LS = {ls*100:.0f}%", fontsize=11)
+        ax.set_title(rf"$\mathit{{LS}} = {ls*100:.0f}\,\%$", fontsize=fs(11))
         if j == 0:
-            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=10)
+            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=fs(10))
 
     # Legend
     ok_label = ("OK — within Project 68 modern envelope"
@@ -239,18 +242,14 @@ def plot_feasibility_grid(df: pd.DataFrame):
                        label="NOSOLVE — thermodynamic infeasibility / TESPy"),
     ]
     fig.legend(handles=legend_handles, loc="lower center",
-               ncol=2, fontsize=9, frameon=False,
+               ncol=2, fontsize=fs(9), frameon=False,
                bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(
-        f"Cascade feasibility — steam at {_T_STEAM_CURRENT:.0f} °C, native scale ({m_steam_label()})\n"
-        f"{_envelope_label_text()}\n"
-        f"Cells annotated with COP (OK / V_ONLY) or failed-flag list "
-        f"(HARD: p₁/p₂/T₁/T₂; V_ONLY: V₁/V₂)",
-        fontsize=11, fontweight="bold",
+        rf"Cascade feasibility  ($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
-    fig.tight_layout(rect=[0, 0.06, 1, 0.85])
-    fig.savefig(os.path.join(OUT_DIR, f"feasibility_grid{_suffix()}.png"),
-                dpi=150, bbox_inches="tight")
+    fig.tight_layout(rect=[0, 0.06, 1, 0.94])
+    save_titled_and_paper(fig, PLOTS_DIR, f"feasibility_grid{_suffix()}")
     plt.close(fig)
 
 
@@ -314,13 +313,13 @@ def plot_value_heatmap(df, value_col, fname, title, *,
                     norm_val = (grid[ii, jj] - vmin) / max(vmax - vmin, 1e-6)
                     text_color = "white" if norm_val > 0.5 else "black"
                     ax.text(jj, ii, fmt.format(grid[ii, jj]),
-                            ha="center", va="center", fontsize=8,
+                            ha="center", va="center", fontsize=fs(8),
                             color=text_color)
 
         _set_panel_ticks(ax, pair_order, T_src_order, show_y=(j == 0))
-        ax.set_title(f"LS = {ls*100:.0f}%", fontsize=11)
+        ax.set_title(rf"$\mathit{{LS}} = {ls*100:.0f}\,\%$", fontsize=fs(11))
         if j == 0:
-            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=10)
+            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=fs(10))
 
     if last_im is not None:
         fig.tight_layout(rect=[0, 0.07, 0.93, 0.85])
@@ -333,12 +332,11 @@ def plot_value_heatmap(df, value_col, fname, title, *,
         mpatches.Patch(color="#cccccc", label="HARD / NOSOLVE — masked"),
     ]
     fig.legend(handles=legend_handles, loc="lower center",
-               ncol=2, fontsize=9, frameon=False,
+               ncol=2, fontsize=fs(9), frameon=False,
                bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle(f"{title}\n{_envelope_label_text()}",
-                 fontsize=11, fontweight="bold")
-    fig.savefig(os.path.join(OUT_DIR, fname), dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    fig.suptitle(rf"{title}  ($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+                 fontsize=fs(10), fontweight="bold")
+    save_titled_and_paper(fig, PLOTS_DIR, fname.removesuffix(".pdf"))
 
 
 # ── Plot 4: T_disch grid with 180 °C reference ──────────────────────────────
@@ -389,7 +387,7 @@ def plot_Tdisch_grid(df: pd.DataFrame):
                     txt_color = "black" if grid[ii, jj] < 160 else "white"
                     ax.text(jj, ii, f"{grid[ii, jj]:.0f}",
                             ha="center", va="center",
-                            fontsize=8, color=txt_color)
+                            fontsize=fs(8), color=txt_color)
                 if is_hot[ii, jj]:
                     ax.add_patch(plt.Rectangle(
                         (jj - 0.5, ii - 0.5), 1, 1,
@@ -397,33 +395,31 @@ def plot_Tdisch_grid(df: pd.DataFrame):
                     ))
 
         _set_panel_ticks(ax, pair_order, T_src_order, show_y=(j == 0))
-        ax.set_title(f"LS = {ls*100:.0f}%", fontsize=11)
+        ax.set_title(rf"$\mathit{{LS}} = {ls*100:.0f}\,\%$", fontsize=fs(11))
         if j == 0:
-            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=10)
+            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=fs(10))
 
     if last_im is not None:
         fig.tight_layout(rect=[0, 0.07, 0.93, 0.85])
         cbar_ax = fig.add_axes([0.945, 0.13, 0.012, 0.65])
         cbar = fig.colorbar(last_im, cax=cbar_ax,
-                            label="max(T_disch_c1, T_disch_c2) [°C]")
+                            label=r"$\max(T_\mathrm{disch,c1}, T_\mathrm{disch,c2})$  [°C]")
         cbar.ax.axhline(180, color="black", linewidth=1.5)
 
     legend_handles = [
         mpatches.Patch(facecolor="white", edgecolor="black",
-                       label="black border = T_disch > 180 °C (Ommen oil-degradation limit)"),
+                       label=r"black border = $T_\mathrm{disch} > 180$ °C (Ommen oil-degradation limit)"),
         mpatches.Patch(color="#cccccc", label="NOSOLVE — masked"),
     ]
     fig.legend(handles=legend_handles, loc="lower center",
-               ncol=2, fontsize=9, frameon=False,
+               ncol=2, fontsize=fs(9), frameon=False,
                bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(
-        f"Compressor discharge temperature — max(T_disch_c1, T_disch_c2)\n"
-        f"Steam at {_T_STEAM_CURRENT:.0f} °C, native scale ({m_steam_label()})",
-        fontsize=12, fontweight="bold",
+        rf"Max discharge temperature  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
-    fig.savefig(os.path.join(OUT_DIR, f"Tdisch_grid{_suffix()}.png"),
-                dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    save_titled_and_paper(fig, PLOTS_DIR, f"Tdisch_grid{_suffix()}")
 
 
 # ── Plot 5: p_high grid with 28 / 50 bar reference contours ─────────────────
@@ -473,23 +469,23 @@ def plot_p_high_grid(df: pd.DataFrame):
                     txt_color = "black" if norm_val < 0.55 else "white"
                     ax.text(jj, ii, f"{grid[ii, jj]:.0f}",
                             ha="center", va="center",
-                            fontsize=8, color=txt_color)
+                            fontsize=fs(8), color=txt_color)
 
         _set_panel_ticks(ax, pair_order, T_src_order, show_y=(j == 0))
-        ax.set_title(f"LS = {ls*100:.0f}%", fontsize=11)
+        ax.set_title(rf"$\mathit{{LS}} = {ls*100:.0f}\,\%$", fontsize=fs(11))
         if j == 0:
-            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=10)
+            ax.set_ylabel("Cycle-1 / Cycle-2 fluid pair", fontsize=fs(10))
 
     if last_im is not None:
         fig.tight_layout(rect=[0, 0.07, 0.93, 0.85])
         cbar_ax = fig.add_axes([0.945, 0.13, 0.012, 0.65])
         cbar = fig.colorbar(last_im, cax=cbar_ax,
-                            label="max(p_high_c1, p_high_c2) [bar]  (log)")
+                            label=r"$\max(p_\mathrm{high,c1}, p_\mathrm{high,c2})$  [bar]  (log)")
         for p_ref in (28.0, 50.0):
             cbar.ax.axhline(p_ref, color="black", linewidth=1.0, linestyle="--")
             cbar.ax.text(1.05, p_ref, f" {p_ref:.0f} bar",
                          transform=cbar.ax.get_yaxis_transform(),
-                         fontsize=8, va="center")
+                         fontsize=fs(8), va="center")
 
     legend_handles = [
         mpatches.Patch(facecolor="none", edgecolor="black",
@@ -497,16 +493,14 @@ def plot_p_high_grid(df: pd.DataFrame):
         mpatches.Patch(color="#cccccc", label="NOSOLVE — masked"),
     ]
     fig.legend(handles=legend_handles, loc="lower center",
-               ncol=1, fontsize=9, frameon=False,
+               ncol=1, fontsize=fs(9), frameon=False,
                bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(
-        f"High-side pressure — max(p_high_c1, p_high_c2)\n"
-        f"Steam at {_T_STEAM_CURRENT:.0f} °C, native scale ({m_steam_label()})",
-        fontsize=12, fontweight="bold",
+        rf"Max high-side pressure  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
-    fig.savefig(os.path.join(OUT_DIR, f"p_high_grid{_suffix()}.png"),
-                dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    save_titled_and_paper(fig, PLOTS_DIR, f"p_high_grid{_suffix()}")
 
 
 # ── Driver ──────────────────────────────────────────────────────────────────
@@ -521,7 +515,7 @@ def main(T_steam=None):
         print(f"Could not find {csv}. "
               f"Run `python main.py --t-steam {int(T_steam)}` first.")
         sys.exit(1)
-    os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(PLOTS_DIR, exist_ok=True)
     print(f"Envelope mode: {ENVELOPE_MODE.upper()}  ({_envelope_label_text()})")
     print(f"Reading {csv}")
     df = load()
@@ -531,7 +525,7 @@ def main(T_steam=None):
 
     print("Plotting COP heatmap ...")
     plot_value_heatmap(
-        df, "COP", f"cop_grid{_suffix()}.png",
+        df, "COP", f"cop_grid{_suffix()}.pdf",
         title=f"COP — steam at {_T_STEAM_CURRENT:.0f} °C, native scale ({m_steam_label()})\n"
               "OK + V_ONLY shown; V_ONLY hatched",
         fmt="{:.2f}", cmap="viridis",
@@ -543,7 +537,7 @@ def main(T_steam=None):
     print("Plotting p_high grid ...")
     plot_p_high_grid(df)
 
-    print(f"\nFigures written to {OUT_DIR}/  (suffix '{_suffix()}')")
+    print(f"\nFigures written to {PLOTS_DIR}/  (suffix '{_suffix()}')")
 
 
 if __name__ == "__main__":

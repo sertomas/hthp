@@ -286,7 +286,7 @@ def _plot_logph(sim, out_path, title_extra=""):
     fig.suptitle(f"Log(p)–h diagram — {title_extra}",
                  fontsize=13, fontweight="bold")
     fig.tight_layout(rect=[0, 0, 1, 0.94])
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.savefig(out_path)
     plt.close(fig)
 
 
@@ -360,12 +360,17 @@ def main(T_steam=None):
     os.makedirs(DESIGNS_DIR, exist_ok=True)
 
     df = pd.read_csv(ENRICHED_CSV)
-    designs = df[(df["status_modern"] == "OK")
+    # Include V_ONLY designs: their p/T limits are met under the modern
+    # envelope, only V_dot exceeds the catalog ceiling. The cost correlation
+    # is extrapolated past Ommen 2015's calibration range, but the design is
+    # physically valid and matches what case_steam_economics.py already
+    # accepts on the economics side.
+    designs = df[(df["status_modern"].isin(["OK", "V_ONLY"]))
                  & (df["ls"].isin([0.30, 0.40, 0.50]))].copy()
     designs = designs.sort_values(by=["f1", "f2", "ls", "T_src"]).reset_index(drop=True)
     n = len(designs)
-    print(f"Exporting per-design TESPy details for {n} OK (modern) designs at "
-          f"LS ∈ {{0.30, 0.40, 0.50}} (T_steam = {T_steam:.0f} °C)\n")
+    print(f"Exporting per-design TESPy details for {n} OK + V_ONLY (modern) "
+          f"designs at LS ∈ {{0.30, 0.40, 0.50}} (T_steam = {T_steam:.0f} °C)\n")
 
     n_ok = 0
     n_fail = 0

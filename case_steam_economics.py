@@ -69,16 +69,18 @@ warnings.filterwarnings("ignore")
 # the start of ``main`` for each case-study T_steam; the placeholders below
 # only matter if the helpers below are called before that override.
 CASE_DIR = ""
-ECON_DIR = ""
+DATA_DIR = ""
+GAS_HEATER_DIR = ""
 ENRICHED_CSV = ""
 
 
 def _set_paths_for_T_steam(T_steam):
     """Rewrite the module-level path globals for a given T_steam."""
-    global CASE_DIR, ECON_DIR, ENRICHED_CSV
-    from config import case_results_dir
+    global CASE_DIR, DATA_DIR, GAS_HEATER_DIR, ENRICHED_CSV
+    from config import case_results_dir, case_data_dir, case_gas_heater_dir
     CASE_DIR = case_results_dir(T_steam)
-    ECON_DIR = os.path.join(CASE_DIR, "economics")
+    DATA_DIR = case_data_dir(T_steam)
+    GAS_HEATER_DIR = case_gas_heater_dir(T_steam)
     ENRICHED_CSV = os.path.join(CASE_DIR, f"case_steam_{int(T_steam)}_enriched.csv")
 
 # Full-load-hours sensitivity sweep (5000–7500 h/a, 500 h steps).
@@ -306,7 +308,8 @@ def main(T_steam=None):
               f"individually: case_steam.main(T_steam={T_steam}) followed "
               f"by reclassify_modern.main(T_steam={T_steam})) first.")
         sys.exit(1)
-    os.makedirs(ECON_DIR, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(GAS_HEATER_DIR, exist_ok=True)
 
     df = pd.read_csv(ENRICHED_CSV)
     # Keep both modern-OK and V_ONLY designs (V̇ above commercial single-unit
@@ -453,35 +456,34 @@ def main(T_steam=None):
     # Persist the full TESPy + exerpy state (state points, components,
     # exergy decomposition, CO2 mass flow, c_P) — same level of detail as
     # the per-design HTHP exports under designs/, but for the reference.
-    gas_out_dir = os.path.join(ECON_DIR, "gas_heater")
-    _write_gas_heater_export(gas_sim, gas_eco, gas_out_dir)
-    print(f"Wrote {gas_out_dir}/  "
+    _write_gas_heater_export(gas_sim, gas_eco, GAS_HEATER_DIR)
+    print(f"Wrote {GAS_HEATER_DIR}/  "
           f"(connections.csv, components.csv, exergy_summary.csv, gas_heater.json)")
 
     # ── Write CSVs ────────────────────────────────────────────────────────
     base_df = pd.DataFrame(base_rows).sort_values(by=["c_P [EUR/GJ]"])
-    base_df.to_csv(os.path.join(ECON_DIR, "economics_base.csv"), index=False)
-    print(f"\nWrote {os.path.join(ECON_DIR, 'economics_base.csv')}  "
+    base_df.to_csv(os.path.join(DATA_DIR, "economics_base.csv"), index=False)
+    print(f"\nWrote {os.path.join(DATA_DIR, 'economics_base.csv')}  "
           f"({len(base_df)} rows, sorted by c_P)")
 
     bk_df = pd.DataFrame(breakdown_rows).sort_values(
         by=["pair", "ls", "T_src", "component"]
     )
-    bk_df.to_csv(os.path.join(ECON_DIR, "economics_pec_breakdown.csv"), index=False)
-    print(f"Wrote {os.path.join(ECON_DIR, 'economics_pec_breakdown.csv')}")
+    bk_df.to_csv(os.path.join(DATA_DIR, "economics_pec_breakdown.csv"), index=False)
+    print(f"Wrote {os.path.join(DATA_DIR, 'economics_pec_breakdown.csv')}")
 
     sens_df = pd.DataFrame(sens_rows).sort_values(
         by=["pair", "ls", "T_src", "e1_c [EUR/MWh]"]
     )
-    sens_df.to_csv(os.path.join(ECON_DIR, "economics_sensitivity_e1.csv"), index=False)
-    print(f"Wrote {os.path.join(ECON_DIR, 'economics_sensitivity_e1.csv')}")
+    sens_df.to_csv(os.path.join(DATA_DIR, "economics_sensitivity_e1.csv"), index=False)
+    print(f"Wrote {os.path.join(DATA_DIR, 'economics_sensitivity_e1.csv')}")
 
     sens_flh_df = pd.DataFrame(sens_flh_rows).sort_values(
         by=["pair", "ls", "T_src", "full_load_hours [h/a]"]
     )
-    sens_flh_df.to_csv(os.path.join(ECON_DIR, "economics_sensitivity_FLH.csv"),
+    sens_flh_df.to_csv(os.path.join(DATA_DIR, "economics_sensitivity_FLH.csv"),
                         index=False)
-    print(f"Wrote {os.path.join(ECON_DIR, 'economics_sensitivity_FLH.csv')}  "
+    print(f"Wrote {os.path.join(DATA_DIR, 'economics_sensitivity_FLH.csv')}  "
           f"({FULL_LOAD_HOURS_RANGE[0]}–{FULL_LOAD_HOURS_RANGE[-1]} h/a, "
           f"{len(FULL_LOAD_HOURS_RANGE)} steps)")
 

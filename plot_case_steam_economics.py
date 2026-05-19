@@ -47,9 +47,18 @@ import pandas as pd
 
 from config import (
     BASE_CO2_PRICE, BASE_E1_C, BASE_FULL_LOAD_HOURS, BASE_GAS_C,
-    PRICE_SENS_FRAC_RANGE, T_STEAM_CASE_DEFAULT, m_steam_label,
+    PRICE_SENS_FRAC_RANGE, T_SOURCE_IN_RANGE, T_STEAM_CASE_DEFAULT,
+    m_steam_label,
 )
 from economics import F_INSTALL
+from plot_common import (
+    COL_DOUBLE_IN, COL_SINGLE_IN,
+    GROUP_STYLE, GROUP_ORDER, GROUP_COLORS, GROUP_LABELS, GROUP_MEMBERS,
+    GROUP_ORDER_SPLIT_MOT, GROUP_COLORS_SPLIT_MOT,
+    GROUP_MEMBERS_SPLIT_MOT,
+    save_titled_and_paper,
+    fs,
+)
 
 
 def _op_string():
@@ -113,7 +122,8 @@ except Exception:
 # Module-level path globals are rewritten by ``_set_paths_for_T_steam`` at
 # the start of ``main`` for each case-study T_steam; the placeholders below
 # only matter if the helpers below are called before that override.
-ECON_DIR = ""
+DATA_DIR = ""
+PLOTS_DIR = ""
 BASE_CSV = ""
 BREAKDOWN_CSV = ""
 SENS_CSV = ""
@@ -128,39 +138,26 @@ def _set_paths_for_T_steam(T_steam):
     Also invalidates the gas-reference c_P cache (it depends on T_steam
     because steam exergy E_P is T-dependent).
     """
-    global ECON_DIR, BASE_CSV, BREAKDOWN_CSV, SENS_CSV, SENS_FLH_CSV
+    global DATA_DIR, PLOTS_DIR, BASE_CSV, BREAKDOWN_CSV, SENS_CSV, SENS_FLH_CSV
     global DESIGNS_DIR, _T_STEAM_CURRENT, _gas_reference_cache
-    from config import case_results_dir
+    from config import case_results_dir, case_data_dir, case_plots_dir
     case_dir = case_results_dir(T_steam)
-    ECON_DIR = os.path.join(case_dir, "economics")
-    BASE_CSV = os.path.join(ECON_DIR, "economics_base.csv")
-    BREAKDOWN_CSV = os.path.join(ECON_DIR, "economics_pec_breakdown.csv")
-    SENS_CSV = os.path.join(ECON_DIR, "economics_sensitivity_e1.csv")
-    SENS_FLH_CSV = os.path.join(ECON_DIR, "economics_sensitivity_FLH.csv")
+    DATA_DIR = case_data_dir(T_steam)
+    PLOTS_DIR = case_plots_dir(T_steam)
+    BASE_CSV = os.path.join(DATA_DIR, "economics_base.csv")
+    BREAKDOWN_CSV = os.path.join(DATA_DIR, "economics_pec_breakdown.csv")
+    SENS_CSV = os.path.join(DATA_DIR, "economics_sensitivity_e1.csv")
+    SENS_FLH_CSV = os.path.join(DATA_DIR, "economics_sensitivity_FLH.csv")
     DESIGNS_DIR = os.path.join(case_dir, "designs")
     _T_STEAM_CURRENT = T_steam
     # Force the gas-reference cache to recompute at the new T_steam
     _gas_reference_cache = {}
 
-# Component groups + colors mirror plot_comparison.py from hthp_optimization
-# (COMP+MOT blue, COND red, EVAP green, CASC orange, ECO yellow → reused for
-# pumps, VAL pink). For the cascade HTHP, IHX *is* the cascade HX so it gets
-# the orange CASC color; SRC_HX is the evaporator (green); SNK_HX is the
-# steam-generating condenser (red).
-COMP_GROUPS = {
-    "COMP+MOT":  ["COMP1", "COMP2", "MOT1", "MOT2"],
-    "SRC_HX":    ["SRC_HX"],
-    "IHX":       ["IHX"],
-    "SNK_HX":    ["SNK_HX"],
-    "VAL":       ["VAL1", "VAL2"],
-}
-GROUP_COLORS = {
-    "COMP+MOT": "#4C72B0",
-    "SRC_HX":   "#55A868",
-    "IHX":      "#D4A039",
-    "SNK_HX":   "#C44E52",
-    "VAL":      "#E8A0BF",
-}
+# Component grouping for every breakdown plot. COMP+MOT of each cycle are
+# bundled into one bar segment (matches Ommen Tab. 4 cost-row granularity);
+# everything else (VAL1, VAL2, SRC_HX, IHX, SNK_HX) is shown separately.
+# Colours / labels / member list come from ``plot_common.GROUP_STYLE``.
+COMP_GROUPS = dict(GROUP_MEMBERS)
 
 # Project 68 (2025) "per unit, no integration" supplier band for 0.5–3 MWth,
 # 110–150 °C — see Figure 1-6 of HPT-PR68-2.
@@ -184,182 +181,14 @@ def _load():
     return base, bk, sens, sens_flh
 
 
-# ── Plot 1: c_P heatmap (LS panels × fluid pair × T_src) ────────────────────
-
-def plot_cP_grid(base):
-    ls_vals = sorted(base["ls"].unique())
-    pair_order = sorted(base["pair"].unique())
-    T_src_order = sorted(base["T_src"].unique())
-
-    vmin = float(base["c_P [EUR/GJ]"].min())
-    vmax = float(base["c_P [EUR/GJ]"].max())
-
-    fig, axes = plt.subplots(1, len(ls_vals),
-                              figsize=(4.6 * len(ls_vals), 4.5),
-                              squeeze=False)
-    last_im = None
-    for j, ls in enumerate(ls_vals):
-        ax = axes[0][j]
-        sub = base[base["ls"] == ls]
-        grid = np.full((len(pair_order), len(T_src_order)), np.nan)
-        for ii, pair in enumerate(pair_order):
-            for jj, T_src in enumerate(T_src_order):
-                row = sub[(sub["pair"] == pair) & (sub["T_src"] == T_src)]
-                if not row.empty:
-                    grid[ii, jj] = row.iloc[0]["c_P [EUR/GJ]"]
-        cmap = plt.get_cmap("plasma_r").copy()
-        cmap.set_bad(color="#cccccc")
-        masked = np.ma.masked_invalid(grid)
-        last_im = ax.imshow(masked, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
-        for ii in range(len(pair_order)):
-            for jj in range(len(T_src_order)):
-                if not np.isnan(grid[ii, jj]):
-                    norm_val = (grid[ii, jj] - vmin) / max(vmax - vmin, 1e-6)
-                    txt_color = "white" if norm_val > 0.5 else "black"
-                    ax.text(jj, ii, f"{grid[ii, jj]:.0f}",
-                            ha="center", va="center", fontsize=8,
-                            color=txt_color)
-        ax.set_xticks(range(len(T_src_order)))
-        ax.set_xticklabels([f"{T:g}" for T in T_src_order])
-        ax.set_yticks(range(len(pair_order)))
-        ax.set_yticklabels(pair_order if j == 0 else [], fontsize=9)
-        ax.set_xlabel("T_source_in [°C]")
-        ax.set_title(f"LS = {ls*100:.0f}%", fontsize=11)
-        if j == 0:
-            ax.set_ylabel("Fluid pair", fontsize=10)
-
-    if last_im is not None:
-        fig.tight_layout(rect=[0, 0.03, 0.93, 0.93])
-        cbar_ax = fig.add_axes([0.945, 0.10, 0.012, 0.80])
-        fig.colorbar(last_im, cax=cbar_ax,
-                     label=r"$c_P$  [EUR/GJ$_{ex}$]")
-
-    fig.suptitle(
-        f"Specific product cost c_P  (native scale ({m_steam_label()}), T_steam = {_T_STEAM_CURRENT:.0f} °C)\n"
-        f"{_op_string()}  |  modern-envelope OK designs — lower c_P = cheaper steam exergy",
-        fontsize=11, fontweight="bold",
-    )
-    fig.savefig(os.path.join(ECON_DIR, "cP_grid.png"),
-                dpi=150, bbox_inches="tight")
-    plt.close(fig)
-
-
-# ── Plot 2 & 3: PEC per kW vs Annex 58 band (TCI and components-only) ──────
-
-def _plot_pec_per_kW(base, value_col, fname, title):
-    ls_vals = sorted(base["ls"].unique())
-    pair_order = sorted(base["pair"].unique())
-    T_src_order = sorted(base["T_src"].unique())
-
-    vmin = float(base[value_col].min())
-    vmax = float(base[value_col].max())
-
-    fig, axes = plt.subplots(1, len(ls_vals),
-                              figsize=(4.6 * len(ls_vals), 4.5),
-                              squeeze=False)
-    last_im = None
-    has_vout = False
-    for j, ls in enumerate(ls_vals):
-        ax = axes[0][j]
-        sub = base[base["ls"] == ls]
-        grid = np.full((len(pair_order), len(T_src_order)), np.nan)
-        vout_grid = np.zeros((len(pair_order), len(T_src_order)), dtype=bool)
-        for ii, pair in enumerate(pair_order):
-            for jj, T_src in enumerate(T_src_order):
-                row = sub[(sub["pair"] == pair) & (sub["T_src"] == T_src)]
-                if not row.empty:
-                    grid[ii, jj] = row.iloc[0][value_col]
-                    if "V_envelope" in row.columns and row.iloc[0]["V_envelope"] == "V_OUT":
-                        vout_grid[ii, jj] = True
-                        has_vout = True
-        cmap = plt.get_cmap("YlGnBu").copy()
-        cmap.set_bad(color="#cccccc")
-        last_im = ax.imshow(np.ma.masked_invalid(grid),
-                            cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
-        for ii in range(len(pair_order)):
-            for jj in range(len(T_src_order)):
-                if not np.isnan(grid[ii, jj]):
-                    norm_val = (grid[ii, jj] - vmin) / max(vmax - vmin, 1e-6)
-                    txt_color = "white" if norm_val > 0.5 else "black"
-                    label = f"{grid[ii, jj]:.0f}"
-                    if vout_grid[ii, jj]:
-                        label += "*"
-                    ax.text(jj, ii, label,
-                            ha="center", va="center", fontsize=8,
-                            color=txt_color)
-                    # mark cells inside Annex 58 band with a green frame
-                    if ANNEX58_BAND_LOW <= grid[ii, jj] <= ANNEX58_BAND_HIGH:
-                        ax.add_patch(plt.Rectangle(
-                            (jj - 0.5, ii - 0.5), 1, 1,
-                            fill=False, edgecolor="#2e7d32", linewidth=2.0))
-                    # Hatch V_OUT cells (V̇ above commercial single-unit ceiling)
-                    if vout_grid[ii, jj]:
-                        ax.add_patch(plt.Rectangle(
-                            (jj - 0.5, ii - 0.5), 1, 1,
-                            fill=False, hatch="///", edgecolor="#444",
-                            linewidth=0.0))
-        ax.set_xticks(range(len(T_src_order)))
-        ax.set_xticklabels([f"{T:g}" for T in T_src_order])
-        ax.set_yticks(range(len(pair_order)))
-        ax.set_yticklabels(pair_order if j == 0 else [], fontsize=9)
-        ax.set_xlabel("T_source_in [°C]")
-        ax.set_title(f"LS = {ls*100:.0f}%", fontsize=11)
-        if j == 0:
-            ax.set_ylabel("Fluid pair", fontsize=10)
-
-    if last_im is not None:
-        fig.tight_layout(rect=[0, 0.03, 0.93, 0.92])
-        cbar_ax = fig.add_axes([0.945, 0.10, 0.012, 0.80])
-        cbar = fig.colorbar(last_im, cax=cbar_ax, label="EUR/kW")
-        # Annex 58 band marker on the colorbar. Only draw the marker if the
-        # band edge actually falls within the cbar data range — otherwise the
-        # axhline/text get rendered far outside the visible cbar, and with
-        # bbox_inches="tight" they blow up the figure bounding box (this was
-        # the layout glitch where PEC_components_only had 70% empty space
-        # above the heatmap because vmax≈308 ≪ 700).
-        for band_edge in (ANNEX58_BAND_LOW, ANNEX58_BAND_HIGH):
-            if vmin <= band_edge <= vmax:
-                cbar.ax.axhline(band_edge, color="#2e7d32", linewidth=1.5)
-                cbar.ax.text(1.05, band_edge, f" {band_edge:.0f}",
-                             transform=cbar.ax.get_yaxis_transform(),
-                             fontsize=8, va="center", color="#2e7d32")
-
-    legend = [mpatches.Patch(facecolor="none", edgecolor="#2e7d32",
-                             linewidth=2,
-                             label=f"Inside Annex 58 / Project 68 band "
-                                   f"({ANNEX58_BAND_LOW:.0f}–{ANNEX58_BAND_HIGH:.0f} EUR/kW, 0.5–3 MWth, 110–150 °C)")]
-    if has_vout:
-        legend.append(mpatches.Patch(facecolor="none", hatch="///",
-                                     edgecolor="#444",
-                                     label="V̇ above commercial single-unit ceiling (* in cell): "
-                                           "operable as parallel/cascade machinery"))
-    fig.legend(handles=legend, loc="lower center",
-               ncol=1, fontsize=9, frameon=False,
-               bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle(title, fontsize=11, fontweight="bold")
-    fig.savefig(os.path.join(ECON_DIR, fname),
-                dpi=150, bbox_inches="tight")
-    plt.close(fig)
-
-
-def plot_pec_per_kW_TCI(base):
-    _plot_pec_per_kW(
-        base, "PEC [EUR/kW]", "PEC_per_kW_grid.png",
-        title=(f"Total Capital Investment (TCI = F_INSTALL × PEC) per kW "
-               f"at native scale ({m_steam_label()})\n"
-               f"F_INSTALL = {F_INSTALL:.2f}; capital only (independent of "
-               f"FLH / e1 / gas)"),
-    )
-
-
-def plot_pec_per_kW_components(base):
-    _plot_pec_per_kW(
-        base, "PEC_components_only [EUR/kW]", "PEC_components_only.png",
-        title=(f"Purchase Equipment Cost (PEC) per kW at native scale ({m_steam_label()})\n"
-               f"Components only (TCI / F_INSTALL = {F_INSTALL:.2f}); "
-               f"capital only (independent of FLH / e1 / gas) — comparable "
-               f"to Annex 58 / Project 68 band"),
-    )
+# NOTE: the old `plot_cP_grid`, `plot_pec_per_kW_TCI` and
+# `plot_pec_per_kW_components` produced ``cP_grid.png`` /
+# ``PEC_per_kW_grid.png`` / ``PEC_components_only.png`` — the same data as
+# the 2×3 per-design heatmaps in ``plot_cdz_sensitivity_per_design.py``
+# (``cP_heatmap.png`` / ``TCI_per_kW_heatmap.png`` /
+# ``PEC_per_kW_heatmap.png``), just with a different layout. They were
+# removed to drop the duplicates; the Annex 58 band overlay that they
+# carried has been ported into the new TCI / PEC heatmaps.
 
 
 # ── Plot 4: PEC component breakdown for the cheapest 12 designs by c_P ──────
@@ -371,41 +200,41 @@ def plot_pec_breakdown(base, bk):
                     + "c_P=" + top["c_P [EUR/GJ]"].round(0).astype(int).astype(str)
                     + r" EUR/GJ$_{ex}$")
 
-    components = ["COMP1", "COMP2", "MOT1", "MOT2",
-                  "SRC_HX", "IHX", "SNK_HX"]
-    comp_colors = plt.cm.tab10(np.linspace(0, 1, len(components)))
+    # PEC group list — VAL1, VAL2 have zero PEC by design so they would
+    # render as empty stacks; skip them in this plot.
+    groups = [g for g in GROUP_ORDER if g not in ("VAL1", "VAL2")]
 
-    fig, ax = plt.subplots(figsize=(13, 7))
+    fig, ax = plt.subplots(figsize=(COL_DOUBLE_IN, 4.2))
     bottom = np.zeros(len(top))
-    for k, comp in enumerate(components):
+    for group in groups:
+        members = COMP_GROUPS[group]
         vals = []
         for _, r in top.iterrows():
             sub = bk[(bk["pair"] == r["pair"])
                      & (bk["ls"] == r["ls"])
                      & (bk["T_src"] == r["T_src"])
-                     & (bk["component"] == comp)]
-            v = float(sub.iloc[0]["PEC [EUR/kW]"]) if not sub.empty else 0.0
+                     & (bk["component"].isin(members))]
+            v = float(sub["PEC [EUR/kW]"].sum()) if not sub.empty else 0.0
             vals.append(v)
         ax.bar(range(len(top)), vals, bottom=bottom,
-               color=comp_colors[k], label=comp, edgecolor="white", linewidth=0.3)
+               color=GROUP_COLORS[group],
+               label=GROUP_LABELS[group],
+               edgecolor="white", linewidth=0.3)
         bottom += np.array(vals)
 
     ax.set_xticks(range(len(top)))
-    ax.set_xticklabels(top["label"], fontsize=8, rotation=30, ha="right")
+    ax.set_xticklabels(top["label"], fontsize=fs(8), rotation=30, ha="right")
     ax.set_ylabel("PEC per kW heating  [EUR/kW]")
     ax.axhspan(ANNEX58_BAND_LOW * F_INSTALL, ANNEX58_BAND_HIGH * F_INSTALL,
                color="#2e7d32", alpha=0.10, zorder=0,
                label=f"Annex 58 band × F_INSTALL ({F_INSTALL:.1f})")
-    ax.set_title(f"PEC component breakdown — 12 cheapest designs by c_P "
-                 f"(native scale ({m_steam_label()}), TCI scale)\n"
-                 f"Ranking by c_P at {_op_string()}; bar = TCI/kW (capital "
-                 f"only, FLH/e1/gas affect ranking but not bar heights)",
-                 fontsize=11, fontweight="bold")
-    ax.legend(loc="upper right", ncol=2, fontsize=9, framealpha=0.9)
+    ax.legend(loc="upper right", ncol=2, fontsize=fs(7), framealpha=0.9)
     ax.grid(axis="y", alpha=0.3)
+    fig.suptitle(rf"PEC breakdown — 12 cheapest designs  "
+                  rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+                  fontsize=fs(10), fontweight="bold")
     fig.tight_layout()
-    fig.savefig(os.path.join(ECON_DIR, "PEC_breakdown.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "PEC_breakdown")
     plt.close(fig)
 
 
@@ -416,7 +245,7 @@ def plot_cP_vs_e1(base, sens):
     best12 = base.nsmallest(12, "c_P [EUR/GJ]")
     keys = list(zip(best12["pair"], best12["ls"], best12["T_src"]))
 
-    fig, ax = plt.subplots(figsize=(12, 6.5))
+    fig, ax = plt.subplots(figsize=(COL_DOUBLE_IN, 4.0))
     # Tab10 + tab10b extension for 12 distinguishable colors
     colors = plt.cm.tab20(np.linspace(0, 1, 20))[:12]
     for k, (pair, ls, T_src) in enumerate(keys):
@@ -425,7 +254,7 @@ def plot_cP_vs_e1(base, sens):
                    & (sens["T_src"] == T_src)].sort_values("e1_c [EUR/MWh]")
         if sub.empty:
             continue
-        label = f"{pair} LS={ls*100:.0f}% T_src={T_src:.0f}°C"
+        label = rf"{pair} $\mathit{{LS}}={ls*100:.0f}$ % $T_\mathrm{{src,in}}={T_src:.0f}$ °C"
         ax.plot(sub["e1_c [EUR/MWh]"], sub["c_P [EUR/GJ]"],
                 marker="o", markersize=4, linewidth=1.4,
                 color=colors[k], label=label)
@@ -436,22 +265,20 @@ def plot_cP_vs_e1(base, sens):
                label=rf"Gas heater @ {BASE_GAS_C:.0f} EUR/MWh, η=0.90"
                      rf"  ($c_P$ = {gas_c_eur_GJ:.0f} EUR/GJ$_{{ex}}$)")
     ax.axvline(BASE_E1_C, color="grey", linestyle=":", alpha=0.6,
-               label=f"Base e1 = {BASE_E1_C:.0f} EUR/MWh")
+               label=rf"Base $c_\mathrm{{el}} = {BASE_E1_C:.0f}$ EUR/MWh")
 
-    ax.set_xlabel("Electricity price e1 [EUR/MWh]")
-    ax.set_ylabel(r"Specific product cost $c_P$  [EUR/GJ$_{ex}$]")
-    ax.set_title("c_P sensitivity to electricity price — 12 cheapest designs\n"
-                 f"Steam at {_T_STEAM_CURRENT:.0f} °C, native scale ({m_steam_label()}), modern envelope, "
-                 f"LS ∈ {{0.30, 0.40, 0.50}}  |  "
-                 f"FLH = {BASE_FULL_LOAD_HOURS:.0f} h/a, "
-                 f"gas = {BASE_GAS_C:.0f} EUR/MWh",
-                 fontsize=11, fontweight="bold")
+    ax.set_xlabel(r"Electricity price $c_\mathrm{el}$  [EUR/MWh]")
+    ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
+    fig.suptitle(
+        rf"$c_P$ vs electricity price — 12 cheapest designs  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
+    )
     ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5),
-              fontsize=8, ncol=1, framealpha=0.90)
+              fontsize=fs(6), ncol=1, framealpha=0.90)
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(ECON_DIR, "cP_vs_e1c.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "cP_vs_e1c")
     plt.close(fig)
 
 
@@ -464,7 +291,7 @@ def plot_cP_vs_FLH(base, sens_flh):
     best12 = base.nsmallest(12, "c_P [EUR/GJ]")
     keys = list(zip(best12["pair"], best12["ls"], best12["T_src"]))
 
-    fig, ax = plt.subplots(figsize=(12, 6.5))
+    fig, ax = plt.subplots(figsize=(COL_DOUBLE_IN, 4.0))
     colors = plt.cm.tab20(np.linspace(0, 1, 20))[:12]
     for k, (pair, ls, T_src) in enumerate(keys):
         sub = sens_flh[(sens_flh["pair"] == pair)
@@ -473,7 +300,7 @@ def plot_cP_vs_FLH(base, sens_flh):
                         ].sort_values("full_load_hours [h/a]")
         if sub.empty:
             continue
-        label = f"{pair} LS={ls*100:.0f}% T_src={T_src:.0f}°C"
+        label = rf"{pair} $\mathit{{LS}}={ls*100:.0f}$ % $T_\mathrm{{src,in}}={T_src:.0f}$ °C"
         ax.plot(sub["full_load_hours [h/a]"], sub["c_P [EUR/GJ]"],
                 marker="o", markersize=4, linewidth=1.4,
                 color=colors[k], label=label)
@@ -485,22 +312,20 @@ def plot_cP_vs_FLH(base, sens_flh):
     # Vertical at base FLH
     from config import BASE_FULL_LOAD_HOURS
     ax.axvline(BASE_FULL_LOAD_HOURS, color="grey", linestyle=":", alpha=0.6,
-               label=f"Base FLH = {BASE_FULL_LOAD_HOURS:.0f} h/a")
+               label=rf"Base $\tau = {BASE_FULL_LOAD_HOURS:.0f}$ h/a")
 
-    ax.set_xlabel("Full-load operating hours [h/a]")
-    ax.set_ylabel(r"Specific product cost $c_P$  [EUR/GJ$_{ex}$]")
-    ax.set_title("c_P sensitivity to full-load hours — 12 cheapest designs\n"
-                 f"Steam at {_T_STEAM_CURRENT:.0f} °C, native scale ({m_steam_label()}), modern envelope, "
-                 f"LS ∈ {{0.30, 0.40, 0.50}}  |  "
-                 f"e1 = {BASE_E1_C:.0f} EUR/MWh, "
-                 f"gas = {BASE_GAS_C:.0f} EUR/MWh",
-                 fontsize=11, fontweight="bold")
+    ax.set_xlabel(r"Full-load operating hours $\tau$  [h/a]")
+    ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
+    fig.suptitle(
+        rf"$c_P$ vs full-load hours — 12 cheapest designs  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
+    )
     ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5),
-              fontsize=8, ncol=1, framealpha=0.95)
+              fontsize=fs(6), ncol=1, framealpha=0.95)
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(ECON_DIR, "cP_vs_FLH.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "cP_vs_FLH")
     plt.close(fig)
 
 
@@ -512,7 +337,7 @@ def plot_cP_vs_gas(base):
     pair_colors = {p: c for p, c in zip(sorted(df["pair"].unique()),
                                           plt.cm.tab10(np.linspace(0, 1, 10)))}
 
-    fig, ax = plt.subplots(figsize=(13, 5.5))
+    fig, ax = plt.subplots(figsize=(COL_DOUBLE_IN, 3.5))
     for k, (_, r) in enumerate(df.iterrows()):
         ax.bar(k, r["c_P [EUR/GJ]"], color=pair_colors[r["pair"]],
                edgecolor="black", linewidth=0.2)
@@ -524,17 +349,16 @@ def plot_cP_vs_gas(base):
 
     ax.set_xlabel(r"Designs (sorted by $c_P$, lowest left)")
     ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
-    ax.set_title(f"c_P — all OK designs sorted by cheapness, color by fluid pair\n"
-                 f"{_op_string()}",
-                 fontsize=11, fontweight="bold")
+    fig.suptitle(rf"$c_P$ — all OK designs sorted  "
+                  rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+                  fontsize=fs(10), fontweight="bold")
     handles = [mpatches.Patch(color=c, label=p) for p, c in pair_colors.items()]
     handles.append(plt.Line2D([0], [0], color="black", linestyle="--",
                               label=rf"Gas reference $c_P$ = {gas_c_eur_GJ:.0f} EUR/GJ$_{{ex}}$"))
-    ax.legend(handles=handles, ncol=5, fontsize=8, loc="upper left")
+    ax.legend(handles=handles, ncol=5, fontsize=fs(8), loc="upper left")
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(ECON_DIR, "cP_vs_gas.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "cP_vs_gas")
     plt.close(fig)
 
 
@@ -555,59 +379,60 @@ def plot_cP_sorted_by_T_src(base):
     y_max = float(base["c_P [EUR/GJ]"].max()) * 1.22
     y_max = max(y_max, gas_c_eur_GJ * 1.25)
 
+    # Vertical layout: 1 column × N rows so each panel gets the full
+    # double-column width — at single-row 5-panel layout the 18 bars in
+    # the T_src = 20 °C case would overlap unreadably at journal scale.
     n = len(T_src_vals)
-    fig, axes = plt.subplots(1, n, figsize=(3.6 * n, 5.5),
-                             sharey=True, squeeze=False)
+    fig, axes = plt.subplots(n, 1, figsize=(COL_DOUBLE_IN, 1.5 * n + 0.8),
+                             sharex=False, squeeze=False)
     for j, T_src in enumerate(T_src_vals):
-        ax = axes[0][j]
+        ax = axes[j][0]
         sub = (base[base["T_src"] == T_src]
                .sort_values("c_P [EUR/GJ]")
                .reset_index(drop=True))
         if sub.empty:
-            ax.set_title(f"T_src = {T_src:.0f} °C\n(no OK designs)",
-                         fontsize=10)
+            ax.set_title(rf"$T_\mathrm{{src,in}} = {T_src:.0f}$ °C  (no OK designs)",
+                         fontsize=fs(9))
             ax.axis("off")
             continue
 
-        labels = [f"{r['pair']}  LS={r['ls']*100:.0f}%"
+        labels = [rf"{r['pair']}" + "\n" + rf"$\mathit{{LS}}={r['ls']*100:.0f}$ %"
                   for _, r in sub.iterrows()]
         colors = [pair_colors[r["pair"]] for _, r in sub.iterrows()]
         x = np.arange(len(sub))
         ax.bar(x, sub["c_P [EUR/GJ]"], color=colors,
                edgecolor="black", linewidth=0.3)
-        ax.axhline(gas_c_eur_GJ, color="black", linestyle="--", linewidth=1.2)
+        ax.axhline(gas_c_eur_GJ, color="black", linestyle="--", linewidth=1.0)
 
-        # value labels above each bar (vertical to avoid horizontal collisions
-        # when a panel has 16-18 bars at the n=18 T_src=20°C case)
+        # value labels above each bar — at full row width the bars get
+        # enough horizontal space that horizontal labels fit.
         for k, v in enumerate(sub["c_P [EUR/GJ]"]):
-            ax.text(k, v + 0.5, f"{v:.0f}", ha="center", va="bottom",
-                    fontsize=7, rotation=90)
+            ax.text(k, v + y_max * 0.01, f"{v:.0f}",
+                    ha="center", va="bottom", fontsize=fs(6))
 
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, fontsize=7, rotation=60, ha="right")
-        ax.set_title(f"T_src = {T_src:.0f} °C  (n={len(sub)})",
-                     fontsize=10, fontweight="bold")
+        ax.set_xticklabels(labels, fontsize=fs(6))
+        ax.set_title(rf"$T_\mathrm{{src,in}} = {T_src:.0f}$ °C  (n={len(sub)})",
+                     fontsize=fs(8), fontweight="bold", loc="left")
         ax.set_ylim(0, y_max)
         ax.grid(axis="y", alpha=0.3)
-        if j == 0:
-            ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
+        ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
 
     handles = [mpatches.Patch(color=c, label=p)
                for p, c in pair_colors.items()
                if p in base["pair"].unique()]
     handles.append(plt.Line2D([0], [0], color="black", linestyle="--",
                               label=rf"Gas heater  $c_P$ = {gas_c_eur_GJ:.0f} EUR/GJ$_{{ex}}$"))
-    fig.legend(handles=handles, ncol=len(handles),
-               loc="lower center", fontsize=9, frameon=False,
-               bbox_to_anchor=(0.5, -0.02))
+    fig.legend(handles=handles, ncol=min(len(handles), 4),
+               loc="lower center", fontsize=fs(7), frameon=False,
+               bbox_to_anchor=(0.5, -0.01))
     fig.suptitle(
-        f"Specific product cost c_P, ranked within each source-water case "
-        f"study  (native scale ({m_steam_label()}), T_steam = {_T_STEAM_CURRENT:.0f} °C)\n{_op_string()}",
-        fontsize=11, fontweight="bold",
+        rf"$c_P$ ranked per $T_\mathrm{{src,in}}$  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
-    fig.tight_layout(rect=[0, 0.03, 1, 0.94])
-    fig.savefig(os.path.join(ECON_DIR, "cP_sorted_by_T_src.png"),
-                dpi=150, bbox_inches="tight")
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+    save_titled_and_paper(fig, PLOTS_DIR, "cP_sorted_by_T_src")
     plt.close(fig)
 
 
@@ -620,12 +445,18 @@ def _design_dir(pair, ls, T_src):
                          f"LS{ls_pct}_Tsrc{int(T_src)}")
 
 
-def _load_cdz_per_design(base, value_col="C_D+Z [EUR/h]"):
-    """Per-design cost-rate metric [EUR/h] grouped by COMP_GROUPS.
+def _load_cdz_per_design(base, value_col="C_D+Z [EUR/h]", groups=None):
+    """Per-design cost-rate metric [EUR/h] grouped by ``groups``.
 
     Returns a DataFrame with columns: pair, ls, T_src, <group>... (one column
-    per group in COMP_GROUPS) and a TOTAL column. One row per OK design.
+    per group in ``groups``) and a TOTAL column. One row per OK design.
+
+    ``groups`` defaults to the bundled ``COMP_GROUPS`` (COMP+MOT per
+    cycle); pass ``GROUP_MEMBERS_SPLIT_MOT`` to keep COMP and MOT as
+    separate stack segments (used by the E_D breakdown).
     """
+    if groups is None:
+        groups = COMP_GROUPS
     rows = []
     for _, r in base.iterrows():
         pair, ls, T_src = r["pair"], float(r["ls"]), float(r["T_src"])
@@ -638,31 +469,36 @@ def _load_cdz_per_design(base, value_col="C_D+Z [EUR/h]"):
         cdz = dict(zip(df["Component"], df[value_col].astype(float)))
 
         row = {"pair": pair, "ls": ls, "T_src": T_src}
-        for group, members in COMP_GROUPS.items():
+        for group, members in groups.items():
             row[group] = sum(cdz.get(m, 0.0) for m in members)
-        row["TOTAL"] = sum(row[g] for g in COMP_GROUPS)
+        row["TOTAL"] = sum(row[g] for g in groups)
         rows.append(row)
     return pd.DataFrame(rows)
 
 
-# Designs with T_src ≤ this temperature operate the SRC_HX in the dissipative
-# regime (T_evap_c1 < T0 = 20 °C, refrigerant evaporates below the dead state).
-# Both source water and refrigerant lose thermal exergy across the SRC_HX,
-# so it produces no useful exergy gain → no F-P split → C_D inflates and is
-# no longer a fair "cost-of-irreversibility" indicator at the component level.
-# These bars are shaded with a hatch pattern in the breakdown plots.
-DISSIPATIVE_T_SRC_MAX_C = 30   # °C, inclusive
-
-
 def _plot_breakdown_per_design(cdz, ylabel, suptitle, fname):
-    """One panel per fluid pair; bars per (T_src × LS) within the panel."""
+    """One panel per fluid pair; bars per (T_src × LS) within the panel.
+
+    The (T_src × LS) grid is the canonical 5×3 parametric envelope
+    (T_src ∈ [20, 30, 40, 50, 60] °C × LS ∈ {0.30, 0.40, 0.50}) so every
+    panel keeps the same 15 x-positions. Cells where the design did not
+    converge are drawn as a greyed-out "infeasible" placeholder so the
+    reader can see *where* the parametric study fails."""
     pairs = sorted(cdz["pair"].unique())
     n = len(pairs)
     ncols = 3
     nrows = (n + ncols - 1) // ncols
 
+    # Canonical 15-cell grid (T_src × LS) in row-major order.
+    T_src_axis = list(T_SOURCE_IN_RANGE)
+    ls_axis = [0.30, 0.40, 0.50]
+    cells = [(T, ls) for T in T_src_axis for ls in ls_axis]
+
+    # 2 × double-column width so each of the 2×3 fluid-pair panels gets
+    # ~5 in of horizontal room. 15 bars per panel leaves >0.3 in per bar
+    # — plenty for the rotated 6 pt "T20 LS30" labels.
     fig, axes = plt.subplots(nrows, ncols,
-                              figsize=(6.0 * ncols, 5.5 * nrows),
+                              figsize=(COL_DOUBLE_IN * 2.0, 3.5 * nrows),
                               squeeze=False)
 
     y_max = float(cdz["TOTAL"].max()) * 1.18
@@ -670,40 +506,38 @@ def _plot_breakdown_per_design(cdz, ylabel, suptitle, fname):
     for idx, pair in enumerate(pairs):
         ax = axes[idx // ncols][idx % ncols]
         sub = (cdz[cdz["pair"] == pair]
-               .sort_values(["T_src", "ls"])
-               .reset_index(drop=True))
-        labels = [f"T{int(r['T_src'])}\nLS{int(r['ls']*100)}"
-                  for _, r in sub.iterrows()]
-        # Mark designs where SRC_HX operates dissipatively (T_evap_c1 < T0).
-        is_diss = sub["T_src"].values <= DISSIPATIVE_T_SRC_MAX_C
-        x = np.arange(len(sub))
-        bottom = np.zeros(len(sub))
+               .set_index(["T_src", "ls"]))
+        labels = [f"T{int(T)} LS{int(ls*100)}" for T, ls in cells]
+        x = np.arange(len(cells))
+        bottom = np.zeros(len(cells))
         for group in COMP_GROUPS:
-            vals = sub[group].values
-            # Plot productive (no hatch) and dissipative (hatched) bars
-            # in two separate calls to give different hatch attributes.
-            for mask, hatch in ((~is_diss, None), (is_diss, "////")):
-                if not mask.any():
-                    continue
-                ax.bar(x[mask], vals[mask], bottom=bottom[mask],
-                       color=GROUP_COLORS[group],
-                       edgecolor="black", linewidth=0.3,
-                       hatch=hatch,
-                       label=group if (idx == 0 and hatch is None) else None)
+            vals = np.array([
+                float(sub.loc[(T, ls), group]) if (T, ls) in sub.index else 0.0
+                for T, ls in cells
+            ])
+            ax.bar(x, vals, bottom=bottom,
+                   color=GROUP_COLORS[group],
+                   edgecolor="black", linewidth=0.3,
+                   label=group if idx == 0 else None)
             bottom += vals
-        # Background tint behind dissipative columns (very subtle).
-        for k, dissipative in enumerate(is_diss):
-            if dissipative:
-                ax.axvspan(k - 0.45, k + 0.45, color="red", alpha=0.06,
-                           zorder=0)
-        # Total label on top
-        for k, v in enumerate(sub["TOTAL"]):
-            ax.text(k, v + y_max * 0.01, f"{v:.0f}",
-                    ha="center", va="bottom", fontsize=7, fontweight="bold")
+        for k, (T, ls) in enumerate(cells):
+            if (T, ls) in sub.index:
+                v = float(sub.loc[(T, ls), "TOTAL"])
+                ax.text(k, v + y_max * 0.01, f"{v:.0f}",
+                        ha="center", va="bottom", fontsize=fs(6),
+                        fontweight="bold")
+            else:
+                ax.add_patch(plt.Rectangle(
+                    (k - 0.4, 0), 0.8, y_max,
+                    fill=True, color="#eeeeee", zorder=0,
+                ))
+                ax.text(k, y_max * 0.04, "infeasible",
+                        ha="center", va="bottom", fontsize=fs(6),
+                        rotation=90, color="#888")
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, fontsize=7)
+        ax.set_xticklabels(labels, fontsize=fs(6), rotation=90)
         ax.set_ylim(0, y_max)
-        ax.set_title(pair, fontweight="bold", fontsize=11)
+        ax.set_title(pair, fontweight="bold", fontsize=fs(9))
         ax.grid(axis="y", alpha=0.25)
         if idx % ncols == 0:
             ax.set_ylabel(ylabel)
@@ -714,17 +548,11 @@ def _plot_breakdown_per_design(cdz, ylabel, suptitle, fname):
 
     handles = [mpatches.Patch(color=GROUP_COLORS[g], label=g)
                for g in COMP_GROUPS]
-    handles.append(mpatches.Patch(facecolor="white", edgecolor="black",
-                                   hatch="////",
-                                   label=(f"hatched: T_src ≤ {DISSIPATIVE_T_SRC_MAX_C} °C "
-                                          f"→ T_evap_c1 < T0 → SRC_HX dissipative "
-                                          f"(C_D inflated, see notes)")))
     fig.legend(handles=handles, loc="lower center", ncol=min(4, len(handles)),
-               fontsize=9, frameon=False, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle(suptitle, fontsize=12, fontweight="bold")
+               fontsize=fs(9), frameon=False, bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle(suptitle, fontsize=fs(12), fontweight="bold")
     fig.tight_layout(rect=[0, 0.05, 1, 0.96])
-    fig.savefig(os.path.join(ECON_DIR, fname),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, fname.removesuffix(".pdf"))
     plt.close(fig)
 
 
@@ -732,9 +560,9 @@ def plot_cost_breakdown_per_design(base, cdz):
     _plot_breakdown_per_design(
         cdz,
         ylabel=r"$\dot{C}_D + \dot{Z}$  [EUR/h]",
-        suptitle=(r"$\dot{C}_D + \dot{Z}$ component breakdown per design "
-                  f"(native scale ({m_steam_label()}), T_steam = {_T_STEAM_CURRENT:.0f} °C)\n{_op_string()}"),
-        fname="cost_breakdown_per_design.png",
+        suptitle=rf"$\dot{{C}}_D + \dot{{Z}}$ per design  "
+                 rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="cost_breakdown_per_design.pdf",
     )
 
 
@@ -742,9 +570,249 @@ def plot_z_breakdown_per_design(base, z):
     _plot_breakdown_per_design(
         z,
         ylabel=r"$\dot{Z}$  [EUR/h]",
-        suptitle=(r"$\dot{Z}$ (capital cost-rate) component breakdown per design "
-                  f"(native scale ({m_steam_label()}), T_steam = {_T_STEAM_CURRENT:.0f} °C)\n{_op_string()}"),
-        fname="z_breakdown_per_design.png",
+        suptitle=rf"$\dot{{Z}}$ per design  "
+                 rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="z_breakdown_per_design.pdf",
+    )
+
+
+# ── Components breakdown — best-LS-per-T_src view ──────────────────────────
+# A pruned variant of ``_plot_breakdown_per_design``: for each (pair, T_src)
+# combination we keep only the LS that gives the lowest c_P. This collapses
+# the 11-18 bars per panel down to ≤ 5 (one per T_src), so the figure fits
+# comfortably at double-column width with no rotated labels.
+
+def _filter_best_ls(per_design_df, base=None, criterion="c_P"):
+    """Keep rows whose (pair, ls, T_src) is the best LS per (pair, T_src) cell.
+
+    ``criterion`` picks what "best" means:
+      - ``"c_P"``     : LS that minimizes ``c_P [EUR/GJ]`` (looked up in
+                        ``base``). Exergoeconomic optimum — used by the C_D+Z
+                        plot.
+      - ``"epsilon"`` : LS that maximizes ``epsilon`` (looked up in ``base``).
+                        Thermodynamic optimum — used by E_D / exergy-balance
+                        plots.
+      - ``"Z_sum"``   : LS that minimizes the ``TOTAL`` column of
+                        ``per_design_df`` itself. Capital-cost optimum — used
+                        by the Z plot. ``base`` is unused in this branch.
+    """
+    if criterion == "Z_sum":
+        idx = per_design_df.groupby(["pair", "T_src"])["TOTAL"].idxmin()
+        best = per_design_df.loc[idx, ["pair", "ls", "T_src"]]
+    elif criterion == "epsilon":
+        idx = base.groupby(["pair", "T_src"])["epsilon"].idxmax()
+        best = base.loc[idx, ["pair", "ls", "T_src"]]
+    else:  # "c_P"
+        idx = base.groupby(["pair", "T_src"])["c_P [EUR/GJ]"].idxmin()
+        best = base.loc[idx, ["pair", "ls", "T_src"]]
+    keep = set(zip(best["pair"], best["ls"].round(2), best["T_src"]))
+    mask = per_design_df.apply(
+        lambda r: (r["pair"], round(float(r["ls"]), 2),
+                    float(r["T_src"])) in keep,
+        axis=1,
+    )
+    return per_design_df[mask].copy()
+
+
+def _plot_components_breakdown(per_design_df, ylabel, suptitle, fname,
+                                groups=None, colors=None, labels=None,
+                                total_fmt="{:.0f}"):
+    """One panel per fluid pair; ≤ 5 bars per panel (one per T_src, best LS).
+
+    Mirrors ``_plot_breakdown_per_design`` but with the (T_src × LS) grid
+    collapsed to a single bar per T_src — the LS that gives the lowest
+    c_P for that (pair, T_src). The chosen LS is shown as the x-tick
+    annotation so the reader sees which lift share is "best" at each
+    source temperature.
+
+    ``groups`` / ``colors`` default to the bundled ``COMP_GROUPS`` /
+    ``GROUP_COLORS``; pass the split-MOT views to render compressor and
+    motor as separate stack segments (used by the E_D plot).
+    """
+    if groups is None:
+        groups = COMP_GROUPS
+    if colors is None:
+        colors = GROUP_COLORS
+    pairs = sorted(per_design_df["pair"].unique())
+    n = len(pairs)
+    ncols = 3
+    nrows = (n + ncols - 1) // ncols
+    # Canonical T_src axis so every panel keeps the same x-axis even when a
+    # fluid pair has no converged design at one of the source temperatures
+    # (rendered as a greyed-out "infeasible" placeholder).
+    T_src_axis = list(T_SOURCE_IN_RANGE)
+
+    fig, axes = plt.subplots(nrows, ncols,
+                              figsize=(COL_DOUBLE_IN, 3.5 * nrows),
+                              squeeze=False)
+    y_max = float(per_design_df["TOTAL"].max()) * 1.18
+
+    for idx, pair in enumerate(pairs):
+        ax = axes[idx // ncols][idx % ncols]
+        sub = (per_design_df[per_design_df["pair"] == pair]
+               .set_index("T_src"))
+        xticklabels = [
+            (f"T{int(T)}\nLS{int(sub.loc[T, 'ls']*100)}" if T in sub.index
+             else f"T{int(T)}\n—")
+            for T in T_src_axis
+        ]
+        x = np.arange(len(T_src_axis))
+        bottom = np.zeros(len(T_src_axis))
+        for group in groups:
+            vals = np.array([
+                float(sub.loc[T, group]) if T in sub.index else 0.0
+                for T in T_src_axis
+            ])
+            ax.bar(x, vals, bottom=bottom,
+                   color=colors[group],
+                   edgecolor="black", linewidth=0.3,
+                   label=group if idx == 0 else None)
+            bottom += vals
+        for k, T in enumerate(T_src_axis):
+            if T in sub.index:
+                v = float(sub.loc[T, "TOTAL"])
+                ax.text(k, v + y_max * 0.01, total_fmt.format(v),
+                        ha="center", va="bottom", fontsize=fs(7),
+                        fontweight="bold")
+            else:
+                ax.add_patch(plt.Rectangle(
+                    (k - 0.4, 0), 0.8, y_max,
+                    fill=True, color="#eeeeee", zorder=0,
+                ))
+                ax.text(k, y_max * 0.04, "infeasible",
+                        ha="center", va="bottom", fontsize=fs(7),
+                        rotation=90, color="#888")
+        ax.set_xticks(x)
+        ax.set_xticklabels(xticklabels, fontsize=fs(7))
+        ax.set_ylim(0, y_max)
+        ax.set_title(pair, fontweight="bold", fontsize=fs(9))
+        ax.grid(axis="y", alpha=0.25)
+        if idx % ncols == 0:
+            ax.set_ylabel(ylabel)
+
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    handles = [mpatches.Patch(color=colors[g],
+                               label=(labels[g] if labels else g))
+               for g in groups]
+    fig.legend(handles=handles, loc="lower center",
+               ncol=min(5, len(handles)),
+               fontsize=fs(8), frameon=False, bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle(suptitle, fontsize=fs(10), fontweight="bold")
+    fig.tight_layout(rect=[0, 0.05, 1, 0.96])
+    save_titled_and_paper(fig, PLOTS_DIR, fname.removesuffix(".pdf"))
+    plt.close(fig)
+
+
+def plot_CDZ_components_breakdown(base, cdz):
+    sub = _filter_best_ls(cdz, base, criterion="c_P")
+    _plot_components_breakdown(
+        sub,
+        ylabel=r"$\dot{C}_D + \dot{Z}$  [EUR/h]",
+        suptitle=rf"$\dot{{C}}_D + \dot{{Z}}$ — best $\mathit{{LS}}$ per "
+                 rf"$T_\mathrm{{src,in}}$  "
+                 rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="CDZ_components_breakdown_per_design.pdf",
+    )
+
+
+def plot_z_components_breakdown(base, z):
+    sub = _filter_best_ls(z, criterion="Z_sum")
+    _plot_components_breakdown(
+        sub,
+        ylabel=r"$\dot{Z}$  [EUR/h]",
+        total_fmt="{:.1f}",
+        suptitle=rf"$\dot{{Z}}$ — best $\mathit{{LS}}$ per "
+                 rf"$T_\mathrm{{src,in}}$  "
+                 rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="z_components_breakdown_per_design.pdf",
+    )
+
+
+def plot_ED_components_breakdown(base, ed):
+    sub = _filter_best_ls(ed, base, criterion="epsilon")
+    _plot_components_breakdown(
+        sub,
+        groups={g: GROUP_MEMBERS_SPLIT_MOT[g] for g in GROUP_ORDER_SPLIT_MOT},
+        colors=GROUP_COLORS_SPLIT_MOT,
+        ylabel=r"$\dot{E}_D$  [kW]",
+        suptitle=rf"$\dot{{E}}_D$ — best $\mathit{{LS}}$ per "
+                 rf"$T_\mathrm{{src,in}}$  "
+                 rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="ED_components_breakdown_per_design.pdf",
+    )
+
+
+# ── System exergy balance breakdown (E_F = E_P + E_L + E_D) ─────────────────
+# Same layout as the components breakdown but the stack is the three
+# system-level exergy terms instead of the per-component decomposition.
+# Pulled from the ``TOT`` row of each design's ``exergoeco_components.csv``.
+
+EXERGY_BALANCE_GROUPS = ["E_P", "E_L", "E_D"]
+EXERGY_BALANCE_COLORS = {
+    "E_P": "#2ca02c",   # product — green
+    "E_L": "#ff7f0e",   # loss    — orange
+    "E_D": "#d62728",   # destruction — red
+}
+EXERGY_BALANCE_LABELS = {
+    "E_P": r"$\dot{E}_P$ (product)",
+    "E_L": r"$\dot{E}_L$ (loss)",
+    "E_D": r"$\dot{E}_D$ (destruction)",
+}
+
+
+def _load_exergy_balance_per_design(base):
+    """Per-design system exergy balance from the TOT row of each
+    ``exergoeco_components.csv``.
+
+    Returns a DataFrame with columns pair, ls, T_src, E_P, E_L, E_D, TOTAL
+    (= E_F). One row per OK design.
+    """
+    rows = []
+    for _, r in base.iterrows():
+        pair, ls, T_src = r["pair"], float(r["ls"]), float(r["T_src"])
+        path = os.path.join(_design_dir(pair, ls, T_src),
+                            "exergoeco_components.csv")
+        if not os.path.exists(path):
+            continue
+        df = pd.read_csv(path)
+        tot = df[df["Component"] == "TOT"]
+        if tot.empty:
+            continue
+        t = tot.iloc[0]
+        rows.append({
+            "pair":   pair,
+            "ls":     ls,
+            "T_src":  T_src,
+            "E_P":    float(t["E_P [kW]"]),
+            "E_L":    float(t["E_L [kW]"]),
+            "E_D":    float(t["E_D [kW]"]),
+            "TOTAL":  float(t["E_F [kW]"]),
+        })
+    return pd.DataFrame(rows)
+
+
+def plot_exergy_balance_breakdown(base):
+    """Stack of E_P / E_L / E_D per (pair, T_src) at the best-c_P LS."""
+    bal = _load_exergy_balance_per_design(base)
+    if bal.empty:
+        print("  ! per-design exergoeco CSVs missing — skipping exergy "
+              "balance breakdown.")
+        return
+    sub = _filter_best_ls(bal, base, criterion="epsilon")
+    groups = {g: [] for g in EXERGY_BALANCE_GROUPS}   # members irrelevant here
+    _plot_components_breakdown(
+        sub,
+        groups=groups,
+        colors=EXERGY_BALANCE_COLORS,
+        labels=EXERGY_BALANCE_LABELS,
+        ylabel=r"$\dot{E}$  [kW]",
+        suptitle=rf"Exergy balance ($\dot{{E}}_F = \dot{{E}}_P + \dot{{E}}_L "
+                 rf"+ \dot{{E}}_D$) — best $\mathit{{LS}}$ per "
+                 rf"$T_\mathrm{{src,in}}$  "
+                 rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="exergy_balance_breakdown_per_design.pdf",
     )
 
 
@@ -763,7 +831,7 @@ def _plot_breakdown_aggregated(cdz, ylabel, title, fname):
     n_per = cdz.groupby("pair").size().reindex(pairs).values
 
     x = np.arange(len(pairs))
-    fig, ax = plt.subplots(figsize=(11, 6.5))
+    fig, ax = plt.subplots(figsize=(COL_DOUBLE_IN, 4.0))
 
     bottom = np.zeros(len(pairs))
     for group in COMP_GROUPS:
@@ -785,19 +853,18 @@ def _plot_breakdown_aggregated(cdz, ylabel, title, fname):
     for i in range(len(pairs)):
         ax.text(i, means_tot[i] + (tot_max.max() * 0.01),
                 f"mean {means_tot[i]:.0f}",
-                ha="center", va="bottom", fontsize=9, fontweight="bold")
+                ha="center", va="bottom", fontsize=fs(9), fontweight="bold")
 
     ax.set_xticks(x)
     ax.set_xticklabels([f"{p}\n(n={int(n)})" for p, n in zip(pairs, n_per)],
-                       fontsize=10)
+                       fontsize=fs(10))
     ax.set_ylabel(ylabel)
     ax.set_ylim(0, tot_max.max() * 1.15)
-    ax.set_title(title, fontweight="bold", fontsize=11)
-    ax.legend(loc="upper right", ncol=2, framealpha=0.95)
+    ax.legend(loc="upper right", ncol=2, framealpha=0.95, fontsize=fs(7))
     ax.grid(axis="y", alpha=0.3)
+    fig.suptitle(title, fontweight="bold", fontsize=fs(10))
     fig.tight_layout()
-    fig.savefig(os.path.join(ECON_DIR, fname),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, fname.removesuffix(".pdf"))
     plt.close(fig)
 
 
@@ -805,10 +872,9 @@ def plot_cost_breakdown_aggregated(cdz):
     _plot_breakdown_aggregated(
         cdz,
         ylabel=r"$\dot{C}_D + \dot{Z}$  [EUR/h]",
-        title=("Mean component cost-rate breakdown per fluid pair  "
-               "(whiskers = min–max across LS × T_src)\n"
-               f"{_op_string()}"),
-        fname="cost_breakdown_aggregated.png",
+        title=rf"$\dot{{C}}_D + \dot{{Z}}$ per fluid pair  "
+              rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="cost_breakdown_aggregated.pdf",
     )
 
 
@@ -816,10 +882,9 @@ def plot_z_breakdown_aggregated(z):
     _plot_breakdown_aggregated(
         z,
         ylabel=r"$\dot{Z}$  [EUR/h]",
-        title=("Mean component capital cost-rate (Z) breakdown per fluid pair  "
-               "(whiskers = min–max across LS × T_src)\n"
-               f"{_op_string()}"),
-        fname="z_breakdown_aggregated.png",
+        title=rf"$\dot{{Z}}$ per fluid pair  "
+              rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fname="z_breakdown_aggregated.pdf",
     )
 
 
@@ -856,24 +921,13 @@ def _component_group(name):
     return "OTHER", "#888888"
 
 
-# Methodology fix: COMP/MOT and PUMP/MOT cost-row bundling is inconsistent
-# across fluid families in Ommen Table 4 (HC: motor lumped into compressor
-# PEC; R717: motor priced separately; pump motors: always lumped into pump).
-# This makes the per-component f-factor (= Z / (Z+C_D)) misleading: e.g.,
-# MOT1 has f=0 % for HC fluids (its Z is hidden inside COMP1) but f=34 % for
-# R717 (its Z is exposed). To produce *cross-fluid-consistent* improvement-
-# priority and ranking plots, we aggregate at the level the cost rows are
-# actually published — drive packages (compressor+motor, pump+motor).
-# The Tsatsaronis quadrant and ranking-flip plots use these aggregates;
-# the breakdown plots can still show the fine-grained components.
+# Component grouping for the Tsatsaronis quadrant and rank-flip plots:
+# COMP+MOT of each cycle are bundled, every other component (VAL1, VAL2,
+# SRC_HX, IHX, SNK_HX) is shown individually. Pulled from the central
+# plot_common.GROUP_STYLE so the visual language is consistent with the
+# other breakdown plots.
 INSIGHT_AGGREGATION = {
-    "COMP+MOT C1":  (["COMP1", "MOT1"],          GROUP_COLORS["COMP+MOT"]),
-    "COMP+MOT C2":  (["COMP2", "MOT2"],          GROUP_COLORS["COMP+MOT"]),
-    "SRC_HX":       (["SRC_HX"],                 GROUP_COLORS["SRC_HX"]),
-    "IHX":          (["IHX"],                    GROUP_COLORS["IHX"]),
-    "SNK_HX":       (["SNK_HX"],                 GROUP_COLORS["SNK_HX"]),
-    "VAL1":         (["VAL1"],                   GROUP_COLORS["VAL"]),
-    "VAL2":         (["VAL2"],                   GROUP_COLORS["VAL"]),
+    g: (GROUP_MEMBERS[g], GROUP_COLORS[g]) for g in GROUP_ORDER
 }
 
 
@@ -923,7 +977,7 @@ def plot_tsatsaronis_quadrant(base):
     nrows = (n + ncols - 1) // ncols
 
     fig, axes = plt.subplots(nrows, ncols,
-                              figsize=(5.6 * ncols, 5.0 * nrows),
+                              figsize=(COL_DOUBLE_IN, 3.2 * nrows),
                               squeeze=False)
 
     # Pre-collect all aggregated components to set a common y-axis upper bound.
@@ -963,17 +1017,17 @@ def plot_tsatsaronis_quadrant(base):
         for fp, cz, name in zip(f_pct, cdz, names):
             ax.annotate(name, (fp, cz),
                         textcoords="offset points", xytext=(6, 4),
-                        fontsize=7, alpha=0.9)
+                        fontsize=fs(7), alpha=0.9)
 
         # Quadrant tags
         ax.text(0.02, 0.97, "improve\nefficiency",
-                transform=ax.transAxes, fontsize=8, color="#7e1b1b",
+                transform=ax.transAxes, fontsize=fs(8), color="#7e1b1b",
                 va="top", ha="left", alpha=0.7, fontweight="bold")
         ax.text(0.98, 0.97, "buy\ncheaper",
-                transform=ax.transAxes, fontsize=8, color="#1b3d7e",
+                transform=ax.transAxes, fontsize=fs(8), color="#1b3d7e",
                 va="top", ha="right", alpha=0.7, fontweight="bold")
         ax.text(0.50, 0.02, "low priority",
-                transform=ax.transAxes, fontsize=8, color="gray",
+                transform=ax.transAxes, fontsize=fs(8), color="gray",
                 va="bottom", ha="center", alpha=0.7, fontstyle="italic")
 
         ax.set_xlim(-3, 103)
@@ -982,9 +1036,10 @@ def plot_tsatsaronis_quadrant(base):
         if idx % ncols == 0:
             ax.set_ylabel(r"$\dot{C}_D + \dot{Z}$  [EUR/h]")
         ax.set_title(
-            f"{r['pair']}  LS={int(r['ls']*100)}%  T_src={int(r['T_src'])} °C  "
-            rf"$c_P$={r['c_P [EUR/GJ]']:.1f} EUR/GJ$_{{ex}}$",
-            fontsize=10,
+            rf"{r['pair']}  $\mathit{{LS}}={int(r['ls']*100)}$ %  "
+            rf"$T_\mathrm{{src,in}}={int(r['T_src'])}$ °C  "
+            rf"$c_P={r['c_P [EUR/GJ]']:.1f}$ EUR/GJ$_{{ex}}$",
+            fontsize=fs(10),
         )
         ax.grid(alpha=0.25)
 
@@ -994,20 +1049,17 @@ def plot_tsatsaronis_quadrant(base):
     handles.append(plt.Line2D([0], [0], marker="o", color="w",
                                markerfacecolor="lightgray",
                                markeredgecolor="black", markersize=10,
-                               label="marker size ∝ C_D"))
+                               label=r"marker size $\propto \dot{C}_D$"))
     fig.legend(handles=handles, loc="lower center",
-               ncol=min(7, len(handles)), fontsize=9, frameon=False,
+               ncol=min(7, len(handles)), fontsize=fs(9), frameon=False,
                bbox_to_anchor=(0.5, -0.02))
     fig.suptitle(
-        "Tsatsaronis improvement-priority quadrant — best design of each fluid pair\n"
-        "low f → fix by efficiency; high f → fix by buying cheaper; "
-        "size ∝ exergy-destruction cost  "
-        "(COMP+MOT and PUMP+MOT aggregated to match Ommen Tab. 4 cost-row granularity)",
-        fontsize=11, fontweight="bold",
+        rf"Tsatsaronis quadrant — best design per fluid pair  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
     fig.tight_layout(rect=[0, 0.04, 1, 0.94])
-    fig.savefig(os.path.join(ECON_DIR, "tsatsaronis_quadrant.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "tsatsaronis_quadrant")
     plt.close(fig)
 
 
@@ -1024,9 +1076,9 @@ def plot_lift_share_vs_T_src(base):
         gas_cP = None
 
     LS_STYLES = {
-        0.30: dict(color="#1f77b4", marker="o", label="LS = 30 %"),
-        0.40: dict(color="#2ca02c", marker="s", label="LS = 40 %"),
-        0.50: dict(color="#d62728", marker="^", label="LS = 50 %"),
+        0.30: dict(color="#1f77b4", marker="o", label=r"$\mathit{LS} = 30$ %"),
+        0.40: dict(color="#2ca02c", marker="s", label=r"$\mathit{LS} = 40$ %"),
+        0.50: dict(color="#d62728", marker="^", label=r"$\mathit{LS} = 50$ %"),
     }
 
     pairs = sorted(base["pair"].unique())
@@ -1035,7 +1087,7 @@ def plot_lift_share_vs_T_src(base):
     nrows = (n + ncols - 1) // ncols
 
     fig, axes = plt.subplots(nrows, ncols,
-                              figsize=(5.4 * ncols, 4.4 * nrows),
+                              figsize=(COL_DOUBLE_IN, 3.0 * nrows),
                               squeeze=False, sharey=True, sharex=True)
 
     y_lo = float(base["c_P [EUR/GJ]"].min()) * 0.95
@@ -1054,7 +1106,8 @@ def plot_lift_share_vs_T_src(base):
                     marker=style.get("marker", "o"),
                     markersize=8, linewidth=1.8,
                     markeredgecolor="black", markeredgewidth=0.5,
-                    label=style.get("label", f"LS = {int(ls*100)} %"))
+                    label=style.get("label",
+                                    rf"$\mathit{{LS}} = {int(ls*100)}$ %"))
 
         if gas_cP is not None:
             ax.axhline(gas_cP, color="black", linestyle="--", linewidth=1.2,
@@ -1064,11 +1117,11 @@ def plot_lift_share_vs_T_src(base):
         ax.set_ylim(y_lo, y_hi)
         ax.set_xticks(T_src_all)
         ax.grid(alpha=0.3)
-        ax.set_title(pair, fontsize=11, fontweight="bold")
+        ax.set_title(pair, fontsize=fs(11), fontweight="bold")
         if idx % ncols == 0:
             ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
         if idx // ncols == nrows - 1:
-            ax.set_xlabel("T_source_in  [°C]")
+            ax.set_xlabel(r"$T_\mathrm{src,in}$  [°C]")
 
     for idx in range(n, nrows * ncols):
         axes[idx // ncols][idx % ncols].set_visible(False)
@@ -1086,17 +1139,16 @@ def plot_lift_share_vs_T_src(base):
                                     label=f"Gas+CO₂ ref ({gas_cP:.1f})"))
 
     fig.legend(handles=handles, loc="lower center",
-               ncol=min(5, len(handles)), fontsize=10, frameon=False,
+               ncol=min(5, len(handles)), fontsize=fs(10), frameon=False,
                bbox_to_anchor=(0.5, -0.01))
 
     fig.suptitle(
-        "Lift-share preference vs source temperature — one panel per fluid pair  "
-        f"({_op_string()})",
-        fontsize=12, fontweight="bold",
+        rf"$c_P$ vs $T_\mathrm{{src,in}}$ per lift share  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    fig.savefig(os.path.join(ECON_DIR, "lift_share_vs_T_src.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "lift_share_vs_T_src")
     plt.close(fig)
 
 
@@ -1112,8 +1164,10 @@ def plot_economic_vs_exergoeconomic_ranking(base):
     bests = _best_design_per_pair(base)
     n = len(bests)
     nrows = n   # one row per fluid pair
+    # Each row hosts 7 component labels on the y-axis; needs ~1.05 in/row
+    # at journal scale so labels do not stack into each other.
     fig, axes = plt.subplots(nrows, 2,
-                              figsize=(13.0, 2.2 * nrows + 1.2),
+                              figsize=(COL_DOUBLE_IN, 1.05 * nrows + 0.8),
                               squeeze=False, sharey=False)
 
     # Determine common x-axis upper bound across all panels for fair compare
@@ -1141,12 +1195,12 @@ def plot_economic_vs_exergoeconomic_ranking(base):
         ax_eco.barh(range(len(eco_sorted)), eco_sorted["Z [EUR/h]"],
                     color=eco_sorted["color"], edgecolor="black", linewidth=0.4)
         ax_eco.set_yticks(range(len(eco_sorted)))
-        ax_eco.set_yticklabels(eco_sorted["Component"], fontsize=8)
+        ax_eco.set_yticklabels(eco_sorted["Component"], fontsize=fs(6))
+        ax_eco.tick_params(axis="x", labelsize=6)
         ax_eco.set_xlim(0, x_max)
         ax_eco.grid(axis="x", alpha=0.25)
         if idx == 0:
-            ax_eco.set_title(r"Economic-only ranking by  $\dot{Z}$ (capital)",
-                              fontsize=10)
+            ax_eco.set_title(r"Economic-only  $\dot{Z}$", fontsize=fs(8))
 
         # RIGHT: ranked by C_D + Z (exergoeconomic, what really costs)
         xex_sorted = agg.sort_values("CDZ", ascending=True)
@@ -1159,32 +1213,30 @@ def plot_economic_vs_exergoeconomic_ranking(base):
                     hatch="////", alpha=0.55,
                     label=r"$\dot{C}_D$")
         ax_xex.set_yticks(range(len(xex_sorted)))
-        ax_xex.set_yticklabels(xex_sorted["Component"], fontsize=8)
+        ax_xex.set_yticklabels(xex_sorted["Component"], fontsize=fs(6))
+        ax_xex.tick_params(axis="x", labelsize=6)
         ax_xex.set_xlim(0, x_max)
         ax_xex.grid(axis="x", alpha=0.25)
         if idx == 0:
-            ax_xex.set_title(r"Exergoeconomic ranking by  $\dot{Z} + \dot{C}_D$",
-                              fontsize=10)
+            ax_xex.set_title(r"Exergoeconomic  $\dot{Z} + \dot{C}_D$",
+                              fontsize=fs(8))
 
-        # Pair label on left side
-        pair_label = (f"{r['pair']}\nLS={int(r['ls']*100)}%, "
-                      f"T_src={int(r['T_src'])} °C\n"
-                      rf"$c_P$={r['c_P [EUR/GJ]']:.1f}")
-        ax_eco.set_ylabel(pair_label, fontsize=9, rotation=0,
-                          ha="right", va="center", labelpad=50)
+        # Single-line pair label to the left of the row
+        pair_label = (rf"{r['pair']}  $\mathit{{LS}}={int(r['ls']*100)}$ %  "
+                      rf"$T_\mathrm{{src,in}}={int(r['T_src'])}$ °C")
+        ax_eco.set_ylabel(pair_label, fontsize=fs(7), rotation=0,
+                          ha="right", va="center", labelpad=40)
 
-    axes[-1][0].set_xlabel(r"$\dot{Z}$  [EUR/h]")
-    axes[-1][1].set_xlabel(r"$\dot{Z} + \dot{C}_D$  [EUR/h]  (solid = Z, hatched = C_D)")
+    axes[-1][0].set_xlabel(r"$\dot{Z}$  [EUR/h]", fontsize=fs(7))
+    axes[-1][1].set_xlabel(r"$\dot{Z} + \dot{C}_D$  [EUR/h]", fontsize=fs(7))
 
     fig.suptitle(
-        "What an exergoeconomic analysis catches that a pure CAPEX ranking misses\n"
-        "Components shifted UP on the right are under-weighted by economic-only analysis  "
-        "(COMP+MOT and PUMP+MOT aggregated to match Ommen Tab. 4 cost-row granularity)",
-        fontsize=11, fontweight="bold",
+        rf"Economic vs exergoeconomic ranking  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
     fig.tight_layout(rect=[0, 0, 1, 0.94])
-    fig.savefig(os.path.join(ECON_DIR, "economic_vs_exergoeconomic_ranking.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "economic_vs_exergoeconomic_ranking")
     plt.close(fig)
 
 
@@ -1239,7 +1291,11 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
         full_load_hours = BASE_FULL_LOAD_HOURS
     is_base_flh = float(full_load_hours) == float(BASE_FULL_LOAD_HOURS)
 
-    # Per pair: pick the design with the lowest c_P at base FLH/e1
+    # Per pair: pick the design with the lowest c_P at base FLH/e1. In
+    # practice this lands at T_src,in = 60 °C for pairs that have a
+    # converged design there (R290/R717-based) and falls back to the
+    # warmest feasible source (typically T_src,in = 50 °C) for the
+    # critical-fluid-limited R1270-based pairs.
     best_per_pair = (base.sort_values("c_P [EUR/GJ]")
                           .drop_duplicates(subset=["pair"], keep="first"))
 
@@ -1290,7 +1346,7 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
     n = len(hthp_cP_per_pair)
     ncols = 3
     nrows = (n + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(5.6 * ncols, 4.8 * nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(COL_DOUBLE_IN, 3.4 * nrows),
                               squeeze=False)
     axes_flat = axes.flatten()
 
@@ -1300,7 +1356,7 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
     cf = None
     for idx, pair in enumerate(sorted(hthp_cP_per_pair)):
         ax = axes_flat[idx]
-        cP_e1, ls, T_src, cop = hthp_cP_per_pair[pair]
+        cP_e1, ls, T_src, _ = hthp_cP_per_pair[pair]
         Z = np.tile(cP_e1[None, :], (len(gas_axis), 1))
 
         cf = ax.contourf(X, Y, Z, levels=levels, cmap="viridis",
@@ -1319,15 +1375,21 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
         ax.axhline(BASE_GAS_C, color="gray", linewidth=0.5, alpha=0.4)
         ax.axvline(BASE_E1_C, color="gray", linewidth=0.5, alpha=0.4)
 
-        ax.set_xlabel(r"$c_{e1}$ [EUR/MWh]")
-        ax.set_ylabel(r"$c_{gas}$ [EUR/MWh]")
-        ax.set_title(f"{pair}  LS={int(ls*100)}%  T_src={int(T_src)} °C  "
-                     f"COP={cop:.2f}", fontsize=10)
+        ax.set_xlabel(r"$c_\mathrm{el}$  [EUR/MWh]")
+        ax.set_ylabel(r"$c_\mathrm{gas}$  [EUR/MWh]")
+        # Pair name on line 1, operating point on line 2 — at fs(8) the
+        # second line fits in the ~2 in panel width without overlap.
+        ax.set_title(
+            f"{pair}\n"
+            rf"$\mathit{{LS}}={int(ls*100)}$ %, "
+            rf"$T_\mathrm{{src,in}}={int(T_src)}$ °C",
+            fontsize=fs(8), linespacing=1.3,
+        )
 
     for idx in range(n, nrows * ncols):
         axes_flat[idx].set_visible(False)
 
-    fig.tight_layout(rect=[0, 0.04, 0.92, 0.94])
+    fig.tight_layout(rect=[0, 0.05, 0.92, 0.91], w_pad=1.8, h_pad=2.5)
     cbar_ax = fig.add_axes([0.94, 0.10, 0.014, 0.78])
     fig.colorbar(cf, cax=cbar_ax,
                  label=r"$c_P^{\,\mathrm{HTHP}}$  [EUR/GJ$_{ex}$]")
@@ -1337,27 +1399,25 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
                    label=r"Break-even  ($c_P^{\,\mathrm{HTHP}} = c_P^{\,\mathrm{gas}}$)"),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="red",
                    markeredgecolor="white", markersize=10,
-                   label=f"Base prices  ({BASE_E1_C:.0f} EUR/MWh el., "
-                         f"{BASE_GAS_C:.0f} EUR/MWh gas)"),
+                   label=rf"Base prices  ($c_\mathrm{{el}}={BASE_E1_C:.0f}$ "
+                         rf"EUR/MWh, $c_\mathrm{{gas}}={BASE_GAS_C:.0f}$ EUR/MWh)"),
     ]
     fig.legend(handles=legend_handles, loc="lower center", ncol=2,
-               fontsize=10, frameon=False, bbox_to_anchor=(0.5, 0.0))
+               fontsize=fs(10), frameon=False, bbox_to_anchor=(0.5, 0.0))
 
     fig.suptitle(
-        r"$c_P^{\,\mathrm{HTHP}}$ vs electricity & gas prices, with break-even "
-        r"contour  "
-        f"(best design per fluid pair, FLH = {full_load_hours:.0f} h/a)\n"
-        f"Above the dashed line: HTHP cheaper than gas; below: gas cheaper.",
-        fontsize=12, fontweight="bold", y=0.98,
+        rf"$c_P^{{\,\mathrm{{HTHP}}}}$ vs $c_\mathrm{{el}}$, $c_\mathrm{{gas}}$  "
+        rf"($\tau = {full_load_hours:.0f}$ h/a, "
+        rf"$T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold", y=0.965,
     )
 
     if fname is None:
         if is_base_flh:
-            fname = "price_sensitivity_2d.png"
+            fname = "price_sensitivity_2d.pdf"
         else:
-            fname = f"price_sensitivity_2d_FLH{int(full_load_hours)}.png"
-    fig.savefig(os.path.join(ECON_DIR, fname),
-                dpi=150, bbox_inches="tight")
+            fname = f"price_sensitivity_2d_FLH{int(full_load_hours)}.pdf"
+    save_titled_and_paper(fig, PLOTS_DIR, fname.removesuffix(".pdf"))
     plt.close(fig)
 
 
@@ -1390,7 +1450,7 @@ def plot_cP_vs_ED_EL_by_Tsrc(base):
     ncols = min(3, n)
     nrows = (n + ncols - 1) // ncols
     fig, axes = plt.subplots(nrows, ncols,
-                              figsize=(5.0 * ncols, 4.5 * nrows),
+                              figsize=(COL_DOUBLE_IN, 3.0 * nrows),
                               squeeze=False, sharey=True)
     axes_flat = axes.flatten()
 
@@ -1410,8 +1470,8 @@ def plot_cP_vs_ED_EL_by_Tsrc(base):
                        zorder=3)
         ax.set_xlim(x_min - x_pad, x_max + x_pad)
         ax.set_ylim(y_min - y_pad, y_max + y_pad)
-        ax.set_title(f"T_src = {int(T_src)} °C  (n = {len(sub)})",
-                     fontsize=11, fontweight="bold")
+        ax.set_title(rf"$T_\mathrm{{src,in}} = {int(T_src)}$ °C  (n = {len(sub)})",
+                     fontsize=fs(11), fontweight="bold")
         ax.set_xlabel(r"$\dot{E}_D + \dot{E}_L$  [kW]")
         if idx % ncols == 0:
             ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
@@ -1424,23 +1484,20 @@ def plot_cP_vs_ED_EL_by_Tsrc(base):
     ls_handles = [
         plt.Line2D([0], [0], marker=m, color="black", linestyle="None",
                    markerfacecolor="lightgray", markersize=9,
-                   label=f"LS = {int(round(ls*100))}%")
+                   label=rf"$\mathit{{LS}} = {int(round(ls*100))}$ %")
         for ls, m in ls_markers.items()
     ]
     fig.legend(handles=pair_handles + ls_handles,
                loc="lower center", ncol=len(pair_handles) + len(ls_handles),
-               fontsize=9, frameon=False, bbox_to_anchor=(0.5, -0.02))
+               fontsize=fs(9), frameon=False, bbox_to_anchor=(0.5, -0.02))
 
     fig.suptitle(
-        r"$c_P$ vs total system exergy losses ($\dot{E}_D + \dot{E}_L$) "
-        f"per source-water case study  (native scale ({m_steam_label()}), T_steam = {_T_STEAM_CURRENT:.0f} °C)\n"
-        f"{_op_string()}  |  Only designs sharing the same T_src are directly "
-        f"comparable.",
-        fontsize=11, fontweight="bold",
+        rf"$c_P$ vs $\dot{{E}}_D + \dot{{E}}_L$ per $T_\mathrm{{src,in}}$  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
     fig.tight_layout(rect=[0, 0.04, 1, 0.94])
-    fig.savefig(os.path.join(ECON_DIR, "cP_vs_ED_EL_by_Tsrc.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "cP_vs_ED_EL_by_Tsrc")
     plt.close(fig)
 
 
@@ -1453,8 +1510,9 @@ def plot_best_designs_per_T_src(base, cdz):
       top-left     (1) COP         — bar per T_src
       top-right    (2) ε [%]       — bar per T_src
       bottom-left  (3) TCI/kW      — bar per T_src (Annex 58 / Project 68 band overlaid)
-      bottom-right (4) C_D + Z     — stacked bar per T_src, components COMP+MOT,
-                                      SRC_HX, IHX, SNK_HX, VAL, PUMP
+      bottom-right (4) C_D + Z     — stacked bar per T_src, components
+                                      COMP1+MOT1, SRC_HX, VAL1, IHX,
+                                      COMP2+MOT2, SNK_HX, VAL2
 
     x-tick labels: ``T_src=X °C\\npair LS=Y%`` so the "winning" design is
     visible at a glance for each T_src case.
@@ -1470,15 +1528,16 @@ def plot_best_designs_per_T_src(base, cdz):
     x = np.arange(len(T_src_vals))
     # Three short lines per tick keep labels narrow enough that adjacent
     # bars in the 2×2 layout do not run into each other horizontally.
-    labels = [f"T_src={int(T)}°C\n{best.loc[T, 'pair']}\n"
-              f"LS={int(round(best.loc[T, 'ls']*100))}%"
+    labels = [rf"$T_\mathrm{{src,in}}={int(T)}$ °C" + "\n"
+              + rf"{best.loc[T, 'pair']}" + "\n"
+              + rf"$\mathit{{LS}}={int(round(best.loc[T, 'ls']*100))}$ %"
               for T in T_src_vals]
     pairs_in_best = list(best["pair"])
     pair_colors = {p: c for p, c in zip(sorted(set(pairs_in_best)),
                                           plt.cm.tab10(np.linspace(0, 1, 10)))}
     bar_colors = [pair_colors[p] for p in pairs_in_best]
 
-    fig, axes = plt.subplots(2, 2, figsize=(13, 11))
+    fig, axes = plt.subplots(2, 2, figsize=(COL_DOUBLE_IN, 6.5))
     axes = axes.flatten()
 
     # Panel 1: COP
@@ -1487,11 +1546,11 @@ def plot_best_designs_per_T_src(base, cdz):
     ax.bar(x, cops, color=bar_colors, edgecolor="black", linewidth=0.4)
     for k, v in enumerate(cops):
         ax.text(k, v + 0.04, f"{v:.2f}", ha="center", va="bottom",
-                fontsize=9, fontweight="bold")
-    ax.set_ylabel("COP  [-]")
+                fontsize=fs(9), fontweight="bold")
+    ax.set_ylabel(r"$\mathrm{COP}$  [-]")
     ax.set_title("Coefficient of performance", fontweight="bold")
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=7)
+    ax.set_xticklabels(labels, fontsize=fs(7))
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylim(0, max(cops) * 1.18)
 
@@ -1501,11 +1560,11 @@ def plot_best_designs_per_T_src(base, cdz):
     ax.bar(x, eps, color=bar_colors, edgecolor="black", linewidth=0.4)
     for k, v in enumerate(eps):
         ax.text(k, v + 0.6, f"{v:.1f}", ha="center", va="bottom",
-                fontsize=9, fontweight="bold")
-    ax.set_ylabel(r"$\varepsilon$  [%]")
+                fontsize=fs(9), fontweight="bold")
+    ax.set_ylabel(r"$\varepsilon_\mathrm{tot}$  [%]")
     ax.set_title("Exergetic efficiency", fontweight="bold")
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=7)
+    ax.set_xticklabels(labels, fontsize=fs(7))
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylim(0, max(eps) * 1.20)
 
@@ -1519,21 +1578,21 @@ def plot_best_designs_per_T_src(base, cdz):
                      f"{ANNEX58_BAND_LOW:.0f}–{ANNEX58_BAND_HIGH:.0f} EUR/kW)")
     for k, v in enumerate(tci):
         ax.text(k, v + 12, f"{v:.0f}", ha="center", va="bottom",
-                fontsize=9, fontweight="bold")
-    ax.set_ylabel(r"TCI/kW  [EUR/kW] (F$_{install}$ × PEC × CI)")
+                fontsize=fs(9), fontweight="bold")
+    ax.set_ylabel(r"TCI / $\dot{Q}_\mathrm{H}$  [EUR/kW]")
     ax.set_title("Total capital investment per kW heat", fontweight="bold")
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=7)
+    ax.set_xticklabels(labels, fontsize=fs(7))
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylim(0, max(tci) * 1.40)
-    ax.legend(loc="upper right", fontsize=7, framealpha=0.95)
+    ax.legend(loc="upper right", fontsize=fs(7), framealpha=0.95)
 
     # Panel 4: C_D + Z stacked breakdown
     ax = axes[3]
     if cdz_idx is None:
         ax.text(0.5, 0.5, "per-design exergoeco CSVs missing",
                 ha="center", va="center", transform=ax.transAxes,
-                color="grey", fontsize=10)
+                color="grey", fontsize=fs(10))
         ax.set_xticks([])
         ax.set_yticks([])
     else:
@@ -1550,24 +1609,306 @@ def plot_best_designs_per_T_src(base, cdz):
             bottom += vals
         for k, v in enumerate(bottom):
             ax.text(k, v + 6, f"{v:.0f}", ha="center", va="bottom",
-                    fontsize=9, fontweight="bold")
+                    fontsize=fs(9), fontweight="bold")
         ax.set_ylabel(r"$\dot{C}_D + \dot{Z}$  [EUR/h]")
         ax.set_title("Component cost-rate breakdown", fontweight="bold")
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, fontsize=7)
+        ax.set_xticklabels(labels, fontsize=fs(7))
         ax.grid(axis="y", alpha=0.3)
         ax.set_ylim(0, bottom.max() * 1.45)
-        ax.legend(loc="upper right", ncol=3, fontsize=7, framealpha=0.95)
+        ax.legend(loc="upper right", ncol=3, fontsize=fs(7), framealpha=0.95)
 
     fig.suptitle(
-        f"Best (cheapest c_P) design per source-water case study  "
-        f"(native scale ({m_steam_label()}), T_steam = {_T_STEAM_CURRENT:.0f} °C)\n{_op_string()}  |  "
-        f"x-axis: T_src; bar = winning fluid pair / LS at that T_src",
-        fontsize=12, fontweight="bold",
+        rf"Best design per $T_\mathrm{{src,in}}$  "
+        rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+        fontsize=fs(10), fontweight="bold",
     )
     fig.tight_layout(rect=[0, 0, 1, 0.93])
-    fig.savefig(os.path.join(ECON_DIR, "best_designs_per_T_src.png"),
-                dpi=150, bbox_inches="tight")
+    save_titled_and_paper(fig, PLOTS_DIR, "best_designs_per_T_src")
+    plt.close(fig)
+
+
+# ── LS-criterion comparison plots ──────────────────────────────────────────
+# Three figures that visualize *how much* the choice of "best LS" criterion
+# (highest ε vs lowest Σ Ż vs lowest c_P) actually moves the design:
+#   1. plot_LS_choice_agreement  — categorical map: which LS each criterion
+#                                  picks per (pair, T_src) cell.
+#   2. plot_LS_pareto_trade_off  — (ε, c_P) Pareto scatter, three LS points
+#                                  per T_src connected by a line per pair.
+#   3. plot_LS_regret_bars       — % efficiency lost / % cost added when the
+#                                  "wrong" criterion is used to pick LS.
+
+_LS_PALETTE = {0.30: "#1f77b4", 0.40: "#2ca02c", 0.50: "#d62728"}
+_LS_MARKER  = {0.30: "o",        0.40: "s",        0.50: "^"}
+
+
+def _criterion_lookup(base, z_only):
+    """Merge ``base`` with the per-design Σ Ż from ``z_only`` on (pair, ls,
+    T_src). Returns a DataFrame with columns pair, ls, T_src, epsilon, COP,
+    c_P [EUR/GJ], Z_sum. ls is rounded to 2 decimals before the join to
+    avoid float-precision merge misses."""
+    b = base.copy()
+    b["_ls_r"] = b["ls"].round(2)
+    z = z_only[["pair", "ls", "T_src", "TOTAL"]].copy()
+    z["_ls_r"] = z["ls"].round(2)
+    z = z.rename(columns={"TOTAL": "Z_sum"}).drop(columns=["ls"])
+    return b.merge(z, on=["pair", "_ls_r", "T_src"], how="left")
+
+
+def _best_ls_per_cell(merged):
+    """For each (pair, T_src) cell, return the LS picked by each of the three
+    criteria and the corresponding metric values. One row per cell, with
+    columns ls_eps, ls_Z, ls_cP plus the (eps|cP|Z) value evaluated at each
+    of those three LS choices."""
+    rows = []
+    for (pair, T_src), grp in merged.groupby(["pair", "T_src"]):
+        ie = grp["epsilon"].idxmax()
+        iz = grp["Z_sum"].idxmin()
+        ic = grp["c_P [EUR/GJ]"].idxmin()
+        rows.append({
+            "pair": pair, "T_src": T_src,
+            "ls_eps": float(grp.loc[ie, "ls"]),
+            "ls_Z":   float(grp.loc[iz, "ls"]),
+            "ls_cP":  float(grp.loc[ic, "ls"]),
+            "eps_eps": float(grp.loc[ie, "epsilon"]),
+            "eps_Z":   float(grp.loc[iz, "epsilon"]),
+            "eps_cP":  float(grp.loc[ic, "epsilon"]),
+            "Z_eps":   float(grp.loc[ie, "Z_sum"]),
+            "Z_Z":     float(grp.loc[iz, "Z_sum"]),
+            "Z_cP":    float(grp.loc[ic, "Z_sum"]),
+            "cP_eps":  float(grp.loc[ie, "c_P [EUR/GJ]"]),
+            "cP_Z":    float(grp.loc[iz, "c_P [EUR/GJ]"]),
+            "cP_cP":   float(grp.loc[ic, "c_P [EUR/GJ]"]),
+        })
+    return pd.DataFrame(rows)
+
+
+def plot_LS_choice_agreement(base, z_only):
+    """One small panel per fluid pair. Y-axis = three criteria (ε, Σ Ż, c_P);
+    x-axis = T_src; cell colour = LS picked by that criterion (blue 30, green
+    40, red 50). Where all three rows of a column share a colour, the
+    criteria agree; differing colours flag the disagreement at a glance."""
+    from matplotlib.colors import ListedColormap
+
+    merged = _criterion_lookup(base, z_only)
+    bdf = _best_ls_per_cell(merged)
+    pairs = sorted(bdf["pair"].unique())
+    n = len(pairs); ncols = 3; nrows = (n + ncols - 1) // ncols
+    T_src_axis = list(T_SOURCE_IN_RANGE)
+
+    fig, axes = plt.subplots(nrows, ncols,
+                              figsize=(COL_DOUBLE_IN, 2.4 * nrows + 0.8),
+                              squeeze=False)
+    # 4-colour map: 3 LS choices + index 3 reserved for "infeasible".
+    cmap = ListedColormap([_LS_PALETTE[0.30], _LS_PALETTE[0.40],
+                            _LS_PALETTE[0.50], "#cccccc"])
+    code_map = {0.30: 0, 0.40: 1, 0.50: 2}
+    crit_keys   = ["ls_eps", "ls_Z", "ls_cP"]
+    crit_labels = [r"$\max\,\varepsilon$",
+                   r"$\min\,\dot{Z}_\mathrm{tot}$",
+                   r"$\min\,c_P$"]
+
+    for idx, pair in enumerate(pairs):
+        ax = axes[idx // ncols][idx % ncols]
+        sub = bdf[bdf["pair"] == pair].set_index("T_src")
+        # Build 3-row × len(T_src_axis) grid; code 3 = infeasible.
+        grid = np.full((len(crit_keys), len(T_src_axis)), np.nan)
+        codes = np.full(grid.shape, 3, dtype=int)
+        for j, T in enumerate(T_src_axis):
+            if T in sub.index:
+                for i, c in enumerate(crit_keys):
+                    ls_val = round(float(sub.loc[T, c]), 2)
+                    grid[i, j] = ls_val
+                    codes[i, j] = code_map[ls_val]
+        ax.imshow(codes, cmap=cmap, aspect="auto", vmin=0, vmax=3)
+        for i in range(grid.shape[0]):
+            for j in range(grid.shape[1]):
+                if codes[i, j] == 3:
+                    ax.text(j, i, "n/a", ha="center", va="center",
+                            fontsize=fs(7), color="#666", fontweight="bold")
+                else:
+                    ax.text(j, i, f"{int(round(grid[i, j] * 100))}",
+                            ha="center", va="center",
+                            fontsize=fs(9), color="white", fontweight="bold")
+        ax.set_xticks(range(len(T_src_axis)))
+        ax.set_xticklabels([f"{int(t)}" for t in T_src_axis],
+                            fontsize=fs(8))
+        ax.set_yticks(range(len(crit_keys)))
+        ax.set_yticklabels(crit_labels, fontsize=fs(8))
+        ax.set_title(pair, fontweight="bold", fontsize=fs(9))
+        if idx // ncols == nrows - 1:
+            ax.set_xlabel(r"$T_\mathrm{src,in}$  [°C]")
+
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    legend = [mpatches.Patch(color=_LS_PALETTE[ls],
+                              label=rf"$\mathit{{LS}} = {int(ls*100)}$ %")
+              for ls in (0.30, 0.40, 0.50)]
+    legend.append(mpatches.Patch(color="#cccccc", label="infeasible"))
+    fig.legend(handles=legend, loc="lower center", ncol=4, fontsize=fs(9),
+               frameon=False, bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle(rf"Best $\mathit{{LS}}$ by criterion  "
+                  rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+                  fontsize=fs(10), fontweight="bold")
+    fig.tight_layout(rect=[0, 0.06, 1, 0.94])
+    save_titled_and_paper(fig, PLOTS_DIR, "LS_choice_agreement")
+    plt.close(fig)
+
+
+def plot_LS_pareto_trade_off(base, z_only):
+    """One panel per fluid pair. Each T_src contributes three points (one per
+    LS) connected by a thin line — a mini-Pareto front in (ε, c_P) space.
+    Marker shape encodes LS, colour encodes T_src so the reader can see both
+    the per-T_src trade-off curve and how it shifts across source
+    temperatures."""
+    merged = _criterion_lookup(base, z_only)
+    pairs = sorted(merged["pair"].unique())
+    n = len(pairs); ncols = 3; nrows = (n + ncols - 1) // ncols
+
+    T_src_all = sorted(merged["T_src"].unique())
+    cmap = plt.get_cmap("viridis")
+    T_colors = {T: cmap(i / max(len(T_src_all) - 1, 1))
+                for i, T in enumerate(T_src_all)}
+
+    fig, axes = plt.subplots(nrows, ncols,
+                              figsize=(COL_DOUBLE_IN, 3.0 * nrows + 0.8),
+                              squeeze=False)
+
+    for idx, pair in enumerate(pairs):
+        ax = axes[idx // ncols][idx % ncols]
+        sub = merged[merged["pair"] == pair]
+        for T_src in sorted(sub["T_src"].unique()):
+            cell = sub[sub["T_src"] == T_src].sort_values("ls")
+            xs = cell["epsilon"].values * 100.0
+            ys = cell["c_P [EUR/GJ]"].values
+            ax.plot(xs, ys, "-", color=T_colors[T_src],
+                    alpha=0.45, linewidth=0.9, zorder=2)
+            for _, r in cell.iterrows():
+                ax.scatter(r["epsilon"] * 100.0, r["c_P [EUR/GJ]"],
+                           marker=_LS_MARKER[round(r["ls"], 2)],
+                           color=T_colors[T_src], s=55,
+                           edgecolor="black", linewidth=0.4, zorder=3)
+        ax.set_title(pair, fontweight="bold", fontsize=fs(9))
+        ax.grid(alpha=0.3)
+        if idx // ncols == nrows - 1:
+            ax.set_xlabel(r"$\varepsilon_\mathrm{tot}$  [%]")
+        if idx % ncols == 0:
+            ax.set_ylabel(r"$c_P$  [EUR/GJ$_{ex}$]")
+
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    ls_handles = [plt.Line2D([0], [0], marker=_LS_MARKER[ls], color="gray",
+                              linestyle="None", markersize=8,
+                              markeredgecolor="black",
+                              label=rf"$\mathit{{LS}} = {int(ls*100)}$ %")
+                  for ls in (0.30, 0.40, 0.50)]
+    T_handles = [mpatches.Patch(color=T_colors[T],
+                                  label=rf"$T_\mathrm{{src,in}} = {int(T)}$ °C")
+                 for T in T_src_all]
+    fig.legend(handles=ls_handles + T_handles, loc="lower center",
+               ncol=len(ls_handles) + len(T_handles), fontsize=fs(7),
+               frameon=False, bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle(rf"Pareto trade-off: $c_P$ vs $\varepsilon_\mathrm{{tot}}$  "
+                  rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+                  fontsize=fs(10), fontweight="bold")
+    fig.tight_layout(rect=[0, 0.06, 1, 0.94])
+    save_titled_and_paper(fig, PLOTS_DIR, "LS_pareto_trade_off")
+    plt.close(fig)
+
+
+def plot_LS_regret_bars(base, z_only):
+    """For each (pair, T_src) compute two regrets (always ≥ 0):
+       * ε regret [%]  = (ε(ε*) − ε(c_P*)) / ε(ε*) × 100
+                          — efficiency lost if you adopt the c_P-best LS
+                          instead of the ε-best LS.
+       * c_P regret [%] = (c_P(ε*) − c_P(c_P*)) / c_P(c_P*) × 100
+                          — extra specific cost paid if you adopt the ε-best
+                          LS instead of the c_P-best LS.
+    One panel per fluid pair, two grouped bars per T_src."""
+    merged = _criterion_lookup(base, z_only)
+    bdf = _best_ls_per_cell(merged)
+    pairs = sorted(bdf["pair"].unique())
+    n = len(pairs); ncols = 3; nrows = (n + ncols - 1) // ncols
+    T_src_axis = list(T_SOURCE_IN_RANGE)
+
+    # Shared y-max so panels are visually comparable; needs the full set of
+    # regret values across all pairs.
+    reg_eps_all = (bdf["eps_eps"] - bdf["eps_cP"]) / bdf["eps_eps"] * 100.0
+    reg_cP_all  = (bdf["cP_eps"]  - bdf["cP_cP"])  / bdf["cP_cP"]  * 100.0
+    y_max = max(float(reg_eps_all.max()), float(reg_cP_all.max()), 0.5) * 1.25
+
+    fig, axes = plt.subplots(nrows, ncols,
+                              figsize=(COL_DOUBLE_IN, 2.8 * nrows + 0.8),
+                              squeeze=False)
+
+    for idx, pair in enumerate(pairs):
+        ax = axes[idx // ncols][idx % ncols]
+        sub = bdf[bdf["pair"] == pair].set_index("T_src")
+        reg_eps = []
+        reg_cP  = []
+        feasible = []
+        for T in T_src_axis:
+            if T in sub.index:
+                r = sub.loc[T]
+                reg_eps.append((r["eps_eps"] - r["eps_cP"]) / r["eps_eps"] * 100.0)
+                reg_cP.append( (r["cP_eps"]  - r["cP_cP"])  / r["cP_cP"]  * 100.0)
+                feasible.append(True)
+            else:
+                reg_eps.append(0.0); reg_cP.append(0.0); feasible.append(False)
+        reg_eps = np.array(reg_eps); reg_cP = np.array(reg_cP)
+        x = np.arange(len(T_src_axis))
+        w = 0.38
+        ax.bar(x - w / 2, reg_eps, width=w, color="#1f77b4",
+                edgecolor="black", linewidth=0.3)
+        ax.bar(x + w / 2, reg_cP,  width=w, color="#d62728",
+                edgecolor="black", linewidth=0.3)
+        for k, T in enumerate(T_src_axis):
+            if not feasible[k]:
+                ax.add_patch(plt.Rectangle(
+                    (k - 0.4, 0), 0.8, y_max,
+                    fill=True, color="#eeeeee", zorder=0,
+                ))
+                ax.text(k, y_max * 0.04, "infeasible",
+                        ha="center", va="bottom", fontsize=fs(7),
+                        rotation=90, color="#888")
+                continue
+            if reg_eps[k] > 0.05:
+                ax.text(k - w / 2, reg_eps[k] + y_max * 0.01,
+                        f"{reg_eps[k]:.1f}", ha="center", va="bottom",
+                        fontsize=fs(6))
+            if reg_cP[k] > 0.05:
+                ax.text(k + w / 2, reg_cP[k] + y_max * 0.01,
+                        f"{reg_cP[k]:.1f}", ha="center", va="bottom",
+                        fontsize=fs(6))
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"{int(T)}" for T in T_src_axis], fontsize=fs(8))
+        ax.set_ylim(0, y_max)
+        ax.set_title(pair, fontweight="bold", fontsize=fs(9))
+        ax.grid(axis="y", alpha=0.3)
+        ax.axhline(0, color="black", linewidth=0.4)
+        if idx // ncols == nrows - 1:
+            ax.set_xlabel(r"$T_\mathrm{src,in}$  [°C]")
+        if idx % ncols == 0:
+            ax.set_ylabel("Regret  [%]")
+
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].set_visible(False)
+
+    handles = [
+        mpatches.Patch(color="#1f77b4",
+                        label=r"$\varepsilon$ lost using $c_P$-best $\mathit{LS}$"),
+        mpatches.Patch(color="#d62728",
+                        label=r"$c_P$ added using $\varepsilon$-best $\mathit{LS}$"),
+    ]
+    fig.legend(handles=handles, loc="lower center", ncol=2, fontsize=fs(8),
+               frameon=False, bbox_to_anchor=(0.5, -0.01))
+    fig.suptitle(rf"Regret from choosing the 'wrong' criterion  "
+                  rf"($T_\mathrm{{steam}} = {_T_STEAM_CURRENT:.0f}$ °C)",
+                  fontsize=fs(10), fontweight="bold")
+    fig.tight_layout(rect=[0, 0.06, 1, 0.94])
+    save_titled_and_paper(fig, PLOTS_DIR, "LS_regret_bars")
     plt.close(fig)
 
 
@@ -1577,18 +1918,12 @@ def main(T_steam=None):
         T_steam = T_STEAM_CASE_DEFAULT
     _set_paths_for_T_steam(T_steam)
     if not all(os.path.exists(p) for p in [BASE_CSV, BREAKDOWN_CSV, SENS_CSV]):
-        print(f"Missing economics CSVs in {ECON_DIR}/. "
+        print(f"Missing economics CSVs in {DATA_DIR}/. "
               f"Run `python main.py --t-steam {int(T_steam)}` first.")
         sys.exit(1)
-    os.makedirs(ECON_DIR, exist_ok=True)
+    os.makedirs(PLOTS_DIR, exist_ok=True)
     base, bk, sens, sens_flh = _load()
 
-    print("Plotting c_P heatmap ...")
-    plot_cP_grid(base)
-    print("Plotting PEC/kW (TCI) with Annex 58 band ...")
-    plot_pec_per_kW_TCI(base)
-    print("Plotting PEC/kW (components only) with Annex 58 band ...")
-    plot_pec_per_kW_components(base)
     print("Plotting PEC component breakdown ...")
     plot_pec_breakdown(base, bk)
     print("Plotting c_P vs electricity price ...")
@@ -1616,12 +1951,28 @@ def main(T_steam=None):
         plot_z_breakdown_per_design(base, z_only)
         print("Plotting Z aggregated by fluid pair ...")
         plot_z_breakdown_aggregated(z_only)
+        # E_D is loaded with the SPLIT-motor grouping so the breakdown
+        # plot renders MOT1 / MOT2 as their own stack segments.
+        ed = _load_cdz_per_design(
+            base, value_col="E_D [kW]",
+            groups=GROUP_MEMBERS_SPLIT_MOT,
+        )
+        print("Plotting components breakdown (best LS per T_src) — C_D+Z, Z, E_D ...")
+        plot_CDZ_components_breakdown(base, cdz)
+        plot_z_components_breakdown(base, z_only)
+        plot_ED_components_breakdown(base, ed)
+        print("Plotting system exergy balance (E_P / E_L / E_D) ...")
+        plot_exergy_balance_breakdown(base)
         print("Plotting Tsatsaronis improvement-priority quadrant per fluid pair ...")
         plot_tsatsaronis_quadrant(base)
         print("Plotting economic vs exergoeconomic ranking ...")
         plot_economic_vs_exergoeconomic_ranking(base)
         print("Plotting best designs per T_src dashboard ...")
         plot_best_designs_per_T_src(base, cdz)
+        print("Plotting LS-criterion comparison (agreement / Pareto / regret) ...")
+        plot_LS_choice_agreement(base, z_only)
+        plot_LS_pareto_trade_off(base, z_only)
+        plot_LS_regret_bars(base, z_only)
     print("Plotting lift-share trends vs T_src per fluid pair ...")
     plot_lift_share_vs_T_src(base)
 
@@ -1640,7 +1991,7 @@ def main(T_steam=None):
     print(f"\nGas reference at base prices: c_P_gas = "
           f"{_gas_reference_cP():.1f} EUR/GJ_ex  "
           f"(at {BASE_GAS_C:.0f} EUR/MWh gas, η_boiler=0.90, exergy basis)")
-    print(f"Figures written to {ECON_DIR}/")
+    print(f"Figures written to {PLOTS_DIR}/")
 
 
 if __name__ == "__main__":

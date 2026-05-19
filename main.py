@@ -61,7 +61,7 @@ def _paths_for(T_steam: float) -> dict:
         "CASE_DIR":      case_dir,
         "SCREEN_CSV":    os.path.join(case_dir, f"{tag}.csv"),
         "ENRICHED_CSV":  os.path.join(case_dir, f"{tag}_enriched.csv"),
-        "ECON_BASE_CSV": os.path.join(case_dir, "economics", "economics_base.csv"),
+        "ECON_BASE_CSV": os.path.join(case_dir, "data", "economics_base.csv"),
         "DESIGNS_DIR":   os.path.join(case_dir, "designs"),
     }
 
