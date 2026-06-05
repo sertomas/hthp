@@ -389,7 +389,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         # Source water connections (direct, no pump)
         c11 = Connection(src_in, "out1", src_hx, "in1", label="11")
-        c13 = Connection(src_hx, "out1", src_out, "in1", label="13")
+        c12 = Connection(src_hx, "out1", src_out, "in1", label="12")
 
         # Cycle 1 (lower)
         c21 = Connection(src_hx, "out2", comp1, "in1", label="21")
@@ -407,12 +407,12 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         # Sink water connections (direct, no pump)
         c41 = Connection(snk_in, "out1", snk_hx, "in2", label="41")
-        c43 = Connection(snk_hx, "out2", snk_out, "in1", label="43")
+        c42 = Connection(snk_hx, "out2", snk_out, "in1", label="42")
 
         nw.add_conns(c21, c22, c22c, c23, c24)
-        nw.add_conns(c11, c13)
+        nw.add_conns(c11, c12)
         nw.add_conns(c31, c32, c32c, c33, c34)
-        nw.add_conns(c41, c43)
+        nw.add_conns(c41, c42)
 
         # Electrical power network — only the two compressor motors remain
         power_input = PowerSource("grid")
@@ -428,8 +428,8 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         nw.add_conns(e1, e2, e3, e4, e5)
 
         # Source water boundary conditions
-        # No Ref constraint on c13.p needed: with SRC_HX pr1=1 (water side),
-        # c13.p is automatically equal to c11.p, and adding the Ref would
+        # No Ref constraint on c12.p needed: with SRC_HX pr1=1 (water side),
+        # c12.p is automatically equal to c11.p, and adding the Ref would
         # over-determine the system.
         if source_mode == "fixed_mass_flow":
             m_val = m_source if m_source is not None else SOURCE_MASS_FLOW
@@ -437,7 +437,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
                          m=m_val)
         else:  # fixed_delta_T
             c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source)
-            c13.set_attr(T=T_src_out_val)
+            c12.set_attr(T=T_src_out_val)
 
         # Cycle 1 boundary conditions
         c21.set_attr(fluid={fluid_cycle1: 1}, td_dew=pinch)
@@ -460,11 +460,11 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         c34.set_attr(T=T_evap_c2_val)
 
         # Sink water boundary conditions.
-        # No Ref constraint on c43.p: with SNK_HX pr2=1 (water/steam side),
-        # c43.p is automatically equal to c41.p (both at the steam saturation
+        # No Ref constraint on c42.p: with SNK_HX pr2=1 (water/steam side),
+        # c42.p is automatically equal to c41.p (both at the steam saturation
         # pressure), and adding the Ref would over-determine the system.
         c41.set_attr(fluid={"water": 1}, p=p_water_val, x=0, m=M_STEAM)
-        c43.set_attr(x=1)
+        c42.set_attr(x=1)
 
         # Component parameters
         # Compressor isentropic efficiency and motor electrical efficiency taken
@@ -523,7 +523,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
             if not _check_ommen_p_limit(fluid_cycle2, p_high_c2, "cycle 2"):
                 return None
 
-        Q_H = c41.m.val * (c43.h.val - c41.h.val)  # kW
+        Q_H = c41.m.val * (c42.h.val - c41.h.val)  # kW
 
         # COP from energy balance (independent of exergy definitions)
         W_shaft_total = abs(comp1.P.val) + abs(comp2.P.val)  # W
@@ -533,7 +533,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         # Exergy analysis — classify source water streams based on temperature vs Tamb
         ean = ExergyAnalysis.from_tespy(nw, Tamb=Tamb, pamb=pamb)
-        product = {"inputs": ["43"], "outputs": ["41"]}
+        product = {"inputs": ["42"], "outputs": ["41"]}
         Tamb_degC = Tamb - 273.15
 
         # Source water inlet (11) → system FUEL: water arrives carrying
@@ -549,7 +549,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # 11 in fuel.inputs  → +E_11 to system fuel (water arriving with exergy)
         # 13 in loss.inputs  → +E_13 to system loss (water leaving with exergy)
         fuel = {"inputs": ["e1", "11"], "outputs": []}
-        loss = {"inputs": ["13"], "outputs": []}
+        loss = {"inputs": ["12"], "outputs": []}
         ean.analyse(E_F=fuel, E_P=product, E_L=loss)
 
         # Patch dissipative HX before economics can run
@@ -605,7 +605,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
             "fluid_cycle1": fluid_cycle1,
             "fluid_cycle2": fluid_cycle2,
             "T_source_in": T_src_in_val,
-            "T_source_out": c13.T.val,
+            "T_source_out": c12.T.val,
             "m_source": c11.m.val,
             "source_mode": source_mode,
             "sizing": {
@@ -655,7 +655,7 @@ def simulate_gas_heater(eta_gas=0.90, T_steam_override=None):
     Uses the Ahrendts chemical exergy database for proper exergy accounting
     of the natural gas (CH4) fuel stream.  The water side uses the same
     boundary conditions as the HTHP sink (saturated water → saturated steam,
-    m = 1 kg/s).
+    m = ``config.M_STEAM``, the same sink steam flow as the HTHP).
 
     Parameters
     ----------
@@ -688,7 +688,7 @@ def simulate_gas_heater(eta_gas=0.90, T_steam_override=None):
     # Pre-compute water-side duty to set CC thermal input
     h_in_w = PropsSI("H", "P", p_water_val * 1e5, "Q", 0, "water")  # J/kg
     h_out_w = PropsSI("H", "P", p_water_val * 1e5, "Q", 1, "water")  # J/kg
-    Q_H_W = 1.0 * (h_out_w - h_in_w)  # W (m = 1 kg/s)
+    Q_H_W = M_STEAM * (h_out_w - h_in_w)  # W (same sink steam flow as the HTHP)
     ti_W = Q_H_W / eta_gas  # CC thermal input [W]
 
     nw = Network(
@@ -722,7 +722,7 @@ def simulate_gas_heater(eta_gas=0.90, T_steam_override=None):
     g2.set_attr(fluid={"CH4": 1}, T=Tamb - 273.15)
 
     # Water: saturated liquid in → saturated vapour out at p_water_val
-    w1.set_attr(fluid={"H2O": 1}, p=p_water_val, x=0, m=1)
+    w1.set_attr(fluid={"H2O": 1}, p=p_water_val, x=0, m=M_STEAM)
     w2.set_attr(x=1)
 
     # CC: excess air ratio λ = 1.2, thermal input in W

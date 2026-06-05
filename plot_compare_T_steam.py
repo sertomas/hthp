@@ -380,7 +380,7 @@ def plot_fleet_exergy_destruction_base(out_dir: str,
 # ── Plot 4: 2-D (FLH, c_el) sensitivity for the reference design ──────────
 
 def plot_sensitivity_FLH_cel(out_dir: str,
-                              ref_pair: str = "R717/R600a",
+                              ref_pair: str = "R717/R600",
                               ref_ls: float = 0.50,
                               ref_T_src: float = 60.0,
                               T_steam_for_break_even: float = 110.0):
@@ -560,7 +560,7 @@ def main():
     print("Plotting exergy_destruction_base.png ...")
     plot_fleet_exergy_destruction_base(out_dir)
     print("Plotting sensitivity_FLH_cel.png ...")
-    plot_sensitivity_FLH_cel(out_dir)
+    plot_sensitivity_FLH_cel(out_dir, ref_pair="R717/R600")
     print(f"\nFigures written to {out_dir}/")
 
 

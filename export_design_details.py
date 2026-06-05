@@ -256,19 +256,30 @@ def _plot_logph_one_cycle(fig, ax, fluid, points, cycle_label):
         y_min=LOGPH_P_MIN_BAR, y_max=LOGPH_P_MAX_BAR,
     )
 
+    # fluprodia hardcodes the isoline labels at fontsize=5; these are the
+    # only texts on the axis at this point (cycle-point annotations are
+    # added below), so bump them all to match the enlarged axes.
+    for txt in ax.texts:
+        txt.set_fontsize(9)
+
     # Closed cycle loop (last point → first)
     h_cycle = h_vals + [h_vals[0]]
     p_cycle = p_vals + [p_vals[0]]
-    ax.plot(h_cycle, p_cycle, "r-", linewidth=2.5, zorder=3)
-    ax.plot(h_vals, p_vals, "ko", markersize=8, zorder=4)
+    ax.plot(h_cycle, p_cycle, "r-", linewidth=2.0, zorder=3)
+    ax.plot(h_vals, p_vals, "ko", markersize=7, zorder=4)
 
     for pt in points:
         ax.annotate(pt["label"], (pt["h"], pt["p"]),
-                    textcoords="offset points", xytext=(8, 8),
-                    fontsize=10, fontweight="bold")
+                    textcoords="offset points", xytext=(7, 7),
+                    fontsize=12)
 
     ax.set_ylim(LOGPH_P_MIN_BAR, LOGPH_P_MAX_BAR)
-    ax.set_title(f"{cycle_label}: {fluid}")
+    # Enlarge axis labels / tick labels so the figure stays legible when
+    # placed in the paper at reduced size.
+    ax.tick_params(axis="both", which="major", labelsize=12)
+    ax.xaxis.label.set_size(14)
+    ax.yaxis.label.set_size(14)
+    ax.set_title(cycle_label, fontsize=15, pad=14)
 
 
 def _plot_logph(sim, out_path, title_extra=""):
@@ -279,13 +290,11 @@ def _plot_logph(sim, out_path, title_extra=""):
 
     fig, (ax_c1, ax_c2) = plt.subplots(1, 2, figsize=(18, 7))
     _plot_logph_one_cycle(fig, ax_c1, f1, states["cycle1"]["points"],
-                          "Cycle 1 (lower)")
+                          f"Cycle 1 ({f1})")
     _plot_logph_one_cycle(fig, ax_c2, f2, states["cycle2"]["points"],
-                          "Cycle 2 (upper)")
+                          f"Cycle 2 ({f2})")
 
-    fig.suptitle(f"Log(p)–h diagram — {title_extra}",
-                 fontsize=13, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    fig.tight_layout()
     fig.savefig(out_path)
     plt.close(fig)
 
@@ -411,7 +420,7 @@ def main(T_steam=None):
                      f"T_steam = {int(T_steam)} °C  |  COP = {sim['COP']:.2f}, "
                      f"ε = {sim['epsilon']:.3f}")
             _plot_qt(sim, os.path.join(out_dir, "qt_diagram.png"), title_extra=title)
-            _plot_logph(sim, os.path.join(out_dir, "logph_diagram.png"), title_extra=title)
+            _plot_logph(sim, os.path.join(out_dir, "logph_diagram.pdf"), title_extra=title)
 
             c_P, Z_sum = _export_exergoeco_csvs(sim, out_dir)
             if c_P is None:

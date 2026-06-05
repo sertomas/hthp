@@ -367,8 +367,10 @@ def _draw_metric_heatmap(ax, grid, ls_vals, t_src_vals, vmin, vmax,
     # ``aspect="equal"`` forces square cells (one data unit = one display
     # unit in both axes); ``aspect="auto"`` would stretch them to fill the
     # axes box and the LS / T_src cells end up as rectangles.
+    # origin="lower" puts the first LS row (smallest, 30 %) at the bottom
+    # and the last (50 %) at the top; the index-based y-tick labels follow.
     im = ax.imshow(masked, cmap=cmap, vmin=vmin, vmax=vmax,
-                   aspect="equal", origin="upper")
+                   aspect="equal", origin="lower")
     for i in range(len(ls_vals)):
         for j in range(len(t_src_vals)):
             if np.isnan(grid[i, j]):
@@ -548,8 +550,10 @@ def _draw_categorical_heatmap(ax, grid, ls_vals, t_src_vals, cmap,
     """
     masked = np.ma.masked_invalid(grid)
     n_codes = cmap.N
+    # origin="lower" puts the first LS row (smallest, 30 %) at the bottom
+    # and the last (50 %) at the top; the index-based y-tick labels follow.
     im = ax.imshow(masked, cmap=cmap, vmin=-0.5, vmax=n_codes - 0.5,
-                   aspect="equal", origin="upper")
+                   aspect="equal", origin="lower")
     for i in range(len(ls_vals)):
         for j in range(len(t_src_vals)):
             if cell_labels is None:
@@ -806,7 +810,7 @@ def _build_continuous_metrics(data_dir, designs_dir, case_dir, T_steam):
             cbar_label=r"LCOH  [EUR/MWh$_\mathrm{th}$]",
             suptitle="LCOH heatmap per design (heat basis)",
             base_name="LCOH_heatmap",
-            fmt="{:.0f}", cmap_name="plasma_r")),
+            fmt="{:.1f}", cmap_name="plasma_r")),
         ("p_max COMP1", dict(
             loader=enriched_loader(lambda r: float(r["p_high_c1 [bar]"])),
             cbar_label=r"$p_\mathrm{max,COMP1}$  [bar]",

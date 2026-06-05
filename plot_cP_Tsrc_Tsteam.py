@@ -96,8 +96,10 @@ def _draw_heatmap(ax, cP, ls, t_src_vals, t_steam_vals,
     """Render one (T_steam × T_src) heatmap into ``ax`` with cell text
     ``c_P / LS=xx`` whose colour is chosen from cell luminance."""
     masked = np.ma.masked_invalid(cP)
+    # origin="lower" puts the first (lowest) T_steam row at the bottom and
+    # the highest T_steam at the top; the index-based y-tick labels follow.
     im = ax.imshow(masked, cmap=cmap, vmin=vmin, vmax=vmax,
-                   aspect="equal", origin="upper")
+                   aspect="equal", origin="lower")
     for i in range(len(t_steam_vals)):
         for j in range(len(t_src_vals)):
             if np.isnan(cP[i, j]):

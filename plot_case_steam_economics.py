@@ -1377,6 +1377,9 @@ def plot_price_sensitivity_2d(base, sens, sens_flh=None,
 
         ax.set_xlabel(r"$c_\mathrm{el,0}$  [EUR/MWh]")
         ax.set_ylabel(r"$c_\mathrm{gas,0}$  [EUR/MWh]")
+        # Cap the gas-price axis at 100 EUR/MWh (the field extends to
+        # 3·BASE_GAS_C ≈ 141 but the upper range is not of interest).
+        ax.set_ylim(gas_axis.min(), 100.0)
         # Pair name on line 1, operating point on line 2 — at fs(8) the
         # second line fits in the ~2 in panel width without overlap.
         ax.set_title(
@@ -1945,10 +1948,10 @@ def plot_LS_choice_agreement(base, z_only):
     cmap = ListedColormap([_LS_PALETTE[0.30], _LS_PALETTE[0.40],
                             _LS_PALETTE[0.50], "#cccccc"])
     code_map = {0.30: 0, 0.40: 1, 0.50: 2}
-    crit_keys   = ["ls_eps", "ls_Z", "ls_cP"]
+    crit_keys   = ["ls_eps", "ls_cP", "ls_Z"]
     crit_labels = [r"$\max\,\varepsilon$",
-                   r"$\min\,\dot{Z}_\mathrm{tot}$",
-                   r"$\min\,c_P$"]
+                   r"$\min\,c_P$",
+                   r"$\min\,\dot{Z}_\mathrm{tot}$"]
 
     for idx, pair in enumerate(pairs):
         ax = axes[idx // ncols][idx % ncols]
