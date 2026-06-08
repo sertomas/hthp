@@ -66,10 +66,10 @@ R1270,R600a,0.5,50,110.0,convergence,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,TES
 R1270,R600a,0.5,60,110.0,Pcrit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: p_cond_c1=44.7 bar ≥ 0.95·p_crit=43.3 bar,NOSOLVE
 R1270,R600a,0.6,20,110.0,,R1270,R600a,1114.82,0.5,1800.0,825.2,738.4,358.21,221.45,610.17,1.0,1.827,0.449,7.05,40.05,111.6,11.85,26.02,118.2,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
 R1270,R600a,0.6,30,110.0,,R1270,R600a,1114.82,0.5,1800.0,708.9,671.1,349.64,196.14,574.51,1.0,1.94,0.428,9.14,43.08,113.3,12.89,26.02,118.5,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
-R1270,R600a,0.6,40,110.0,convergence,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,TESPy did not converge,NOSOLVE
+R1270,R600a,0.6,40,110.0,,R1270,R600a,1114.82,0.5,1800.0,586.7,610.4,302.39,171.68,499.02,1.0,2.234,0.438,11.54,42.3,109.4,14.0,26.02,118.7,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
 R1270,R600a,0.6,50,110.0,Pcrit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: p_cond_c1=45.5 bar ≥ 0.95·p_crit=43.3 bar,NOSOLVE
 R1270,R600a,0.6,60,110.0,T_crit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: T_cond_c1=95.0 °C ≥ T_crit=91.1 °C,NOSOLVE
-R1270,R600a,0.7,20,110.0,convergence,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,TESPy did not converge,NOSOLVE
+R1270,R600a,0.7,20,110.0,,R1270,R600a,1114.82,0.5,1800.0,947.2,596.2,421.05,165.7,617.63,1.0,1.805,0.444,6.76,43.08,117.0,14.29,26.02,118.8,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
 R1270,R600a,0.7,30,110.0,Pcrit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: p_cond_c1=45.5 bar ≥ 0.95·p_crit=43.3 bar,NOSOLVE
 R1270,R600a,0.7,40,110.0,T_crit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: T_cond_c1=94.0 °C ≥ T_crit=91.1 °C,NOSOLVE
 R1270,R600a,0.7,50,110.0,T_crit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: T_cond_c1=97.0 °C ≥ T_crit=91.1 °C,NOSOLVE
@@ -91,10 +91,10 @@ R1270,R600,0.5,50,110.0,convergence,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,TESP
 R1270,R600,0.5,60,110.0,Pcrit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: p_cond_c1=44.7 bar ≥ 0.95·p_crit=43.3 bar,NOSOLVE
 R1270,R600,0.6,20,110.0,,R1270,R600,1114.82,0.5,1800.0,852.0,818.1,369.04,197.21,596.05,1.0,1.87,0.461,7.01,40.05,111.7,8.86,20.23,116.5,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
 R1270,R600,0.6,30,110.0,,R1270,R600,1114.82,0.5,1800.0,728.3,743.4,358.68,175.1,561.87,1.0,1.984,0.438,9.1,43.08,113.4,9.68,20.23,116.8,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
-R1270,R600,0.6,40,110.0,convergence,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,TESPy did not converge,NOSOLVE
+R1270,R600,0.6,40,110.0,,R1270,R600,1114.82,0.5,1800.0,597.9,676.2,308.18,153.62,486.1,1.0,2.293,0.45,11.54,42.3,109.4,10.56,20.23,117.2,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
 R1270,R600,0.6,50,110.0,Pcrit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: p_cond_c1=45.5 bar ≥ 0.95·p_crit=43.3 bar,NOSOLVE
 R1270,R600,0.6,60,110.0,T_crit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: T_cond_c1=95.0 °C ≥ T_crit=91.1 °C,NOSOLVE
-R1270,R600,0.7,20,110.0,convergence,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,TESPy did not converge,NOSOLVE
+R1270,R600,0.7,20,110.0,,R1270,R600,1114.82,0.5,1800.0,964.5,660.5,428.75,148.35,607.47,1.0,1.835,0.452,6.76,43.08,117.0,10.79,20.23,117.3,False,True,True,True,False,False,False,"p_c1, V_c1, V_c2",ok,HARD
 R1270,R600,0.7,30,110.0,Pcrit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: p_cond_c1=45.5 bar ≥ 0.95·p_crit=43.3 bar,NOSOLVE
 R1270,R600,0.7,40,110.0,T_crit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: T_cond_c1=94.0 °C ≥ T_crit=91.1 °C,NOSOLVE
 R1270,R600,0.7,50,110.0,T_crit_c1,,,,,,,,,,,,,,,,,,,,,,,,,,False,no_solve,f1=R1270: T_cond_c1=97.0 °C ≥ T_crit=91.1 °C,NOSOLVE

@@ -531,25 +531,28 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         W_el = W_shaft_total / eta_motor
         COP = Q_H * 1000 / W_el  # Q_H [kW] → [W]
 
-        # Exergy analysis — classify source water streams based on temperature vs Tamb
+        # Exergy analysis — classify the source water streams (11 in, 12 out).
         ean = ExergyAnalysis.from_tespy(nw, Tamb=Tamb, pamb=pamb)
         product = {"inputs": ["42"], "outputs": ["41"]}
-        Tamb_degC = Tamb - 273.15
 
-        # Source water inlet (11) → system FUEL: water arrives carrying
-        # useful exergy and is priced at c = 0 (free reservoir).
-        # Source water outlet (13) → system LOSS: whatever exergy remains
-        # after the SRC_HX leaves the system unrecovered.
-        # Split (rather than the previous paired fuel/loss with T_src vs
-        # Tamb conditional) gives a clean, continuous boundary definition
-        # that does not flip at T_src = Tamb. Tamb_degC is kept available
-        # for downstream patches but no longer drives the classification.
-        del Tamb_degC
-        # exerpy convention: "inputs" ADD to the category, "outputs" SUBTRACT.
-        # 11 in fuel.inputs  → +E_11 to system fuel (water arriving with exergy)
-        # 13 in loss.inputs  → +E_13 to system loss (water leaving with exergy)
-        fuel = {"inputs": ["e1", "11"], "outputs": []}
-        loss = {"inputs": ["12"], "outputs": []}
+        # exerpy convention: "inputs" ADD to a category, "outputs" SUBTRACT.
+        #
+        # Source water inlet 11 is always a FUEL input (water arrives carrying
+        # exergy from the free reservoir, priced at c = 0 downstream).
+        #
+        # Source water outlet 12: in fixed-mass-flow mode the outlet temperature
+        # floats. If the water leaves ABOVE ambient it still carries usable
+        # thermal exergy, so 12 is a FUEL OUTPUT — the net water fuel
+        # E_11 − E_12 is then the exergy actually drawn, and its leaving exergy
+        # is not charged to the system. If it leaves at or below ambient, that
+        # leaving exergy is dumped unused and 12 is a genuine LOSS.
+        Tamb_degC = Tamb - 273.15
+        if c12.T.val > Tamb_degC:
+            fuel = {"inputs": ["e1", "11"], "outputs": ["12"]}
+            loss = {}
+        else:
+            fuel = {"inputs": ["e1", "11"], "outputs": []}
+            loss = {"inputs": ["12"], "outputs": []}
         ean.analyse(E_F=fuel, E_P=product, E_L=loss)
 
         # Patch dissipative HX before economics can run
