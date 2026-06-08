@@ -958,8 +958,13 @@ def _aggregate_for_insight(comps):
     return pd.DataFrame(rows)
 
 
-def _best_design_per_pair(base):
-    """Lowest-c_P design within each fluid pair, as a list of dicts."""
+def _best_design_records(base):
+    """Lowest-c_P design within each fluid pair, as a list of dicts.
+
+    Distinct from ``_best_design_per_pair`` (which returns a DataFrame for the
+    FLH/price-sensitivity plots); this list-of-dicts form is what the
+    component-insight plots iterate over.
+    """
     rows = base.loc[base.groupby("pair")["c_P [EUR/GJ]"].idxmin()]
     return rows.sort_values("pair").to_dict(orient="records")
 
@@ -971,7 +976,7 @@ def plot_tsatsaronis_quadrant(base):
     (f-factor, C_D+Z). Marker size scales with C_D so dissipative items pop.
     Quadrant guidance lines at f=50% and at half the panel's C_D+Z range.
     """
-    bests = _best_design_per_pair(base)
+    bests = _best_design_records(base)
     n = len(bests)
     ncols = 3
     nrows = (n + ncols - 1) // ncols
@@ -1161,7 +1166,7 @@ def plot_economic_vs_exergoeconomic_ranking(base):
     incurs"). Components that move up the ranking when C_D is included
     are the ones a pure CAPEX/OPEX analysis would underweight.
     """
-    bests = _best_design_per_pair(base)
+    bests = _best_design_records(base)
     n = len(bests)
     nrows = n   # one row per fluid pair
     # Each row hosts 7 component labels on the y-axis; needs ~1.05 in/row

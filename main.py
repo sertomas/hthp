@@ -196,7 +196,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
         T_evap_c2_override=lift_share_to_T34(ls, T_src, T_steam=T_steam),
         T_source_in_override=T_src,
         T_steam_override=T_steam,
-        source_mode="fixed_mass_flow",
+        source_mode="fixed_T_out",
         skip_ommen_check=True,
     )
     if sim is None:

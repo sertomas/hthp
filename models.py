@@ -134,6 +134,47 @@ def get_source_delta_T(T_src_in):
     return float(SOURCE_DELTA_T)
 
 
+#  Margin above the ambient dead state for the source-water outlet [K].
+#  Cooling to *exactly* Tamb drives SRC_HX into exerpy's heat-exchanger
+#  "Case 4" (hot inlet above Tamb, hot outlet at Tamb, cold stream below):
+#  the hot-stream thermal F-rule (c_T,11 = c_T,12) is NOT applied there, and
+#  because the outlet thermal exergy is ~0 the back-solved specific cost
+#  c_T,12 explodes (~1e4 EUR/GJ). As a fuel output that spurious cost is
+#  then credited off the fuel, artificially lowering c_P. Stopping 0.01 K
+#  above Tamb keeps the hot outlet above ambient → SRC_HX is Case 5/6, the
+#  hot F-rule applies, c_12 = c_11 = 0, and the cost balance is clean.
+_SOURCE_T_OUT_MARGIN = 0.01  # K above Tamb
+
+
+def _source_T_out_target(T_src_in):
+    """
+    Target outlet temperature of the source water (stream 12) [°C] for the
+    ``"fixed_T_out"`` source mode.
+
+    The source water is cooled down to essentially the ambient dead state
+    (Tamb + ``_SOURCE_T_OUT_MARGIN``) so that almost all of its above-ambient
+    thermal exergy is extracted while keeping the SRC_HX hot outlet just above
+    Tamb (see the note on ``_SOURCE_T_OUT_MARGIN`` for why exactly-Tamb is
+    avoided). The single exception is a source that already enters at ambient
+    (T11 = Tamb): cooling it to ambient would leave no driving temperature
+    difference and zero duty, so it is instead cooled 10 K below ambient.
+
+    Parameters
+    ----------
+    T_src_in : float
+        Source water inlet temperature [°C].
+
+    Returns
+    -------
+    float
+        Outlet temperature target [°C].
+    """
+    Tamb_C = Tamb - 273.15
+    if abs(T_src_in - Tamb_C) < 1e-9:
+        return Tamb_C - 10.0
+    return Tamb_C + _SOURCE_T_OUT_MARGIN
+
+
 def _patch_dissipative_hx(ean):
     """
     Monkey-patch dissipative HX components (Case 6) in an ExergyAnalysis.
@@ -257,7 +298,7 @@ def _extract_qt_sections(hx_dict):
 
 
 def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
-                   T_source_in_override=None, source_mode="fixed_delta_T",
+                   T_source_in_override=None, source_mode="fixed_T_out",
                    m_source=None, T_steam_override=None,
                    skip_ommen_check=False):
     """
@@ -282,13 +323,17 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         ``T_source_in`` (20 deg C).
     source_mode : str, optional
         Source water constraint mode:
+        - ``"fixed_T_out"``: fix T_in and the outlet temperature T12 (m free).
+          T12 = Tamb (cool the source to the dead state), except when the
+          source already enters at ambient (T_in = Tamb), where T12 = Tamb −
+          10 K so a finite duty remains. See ``_source_T_out_target``.
         - ``"fixed_delta_T"``: fix T_in and T_out = T_in - SOURCE_DELTA_T (m free).
         - ``"fixed_mass_flow"``: fix T_in and m (T_out free).
-        The function-level default is ``"fixed_delta_T"``, but every call
+        The function-level default is ``"fixed_T_out"``, which every call
         site in the pipeline (``main.py``, ``case_steam.py``,
         ``case_steam_economics.py``, ``export_design_details.py``)
-        passes ``"fixed_mass_flow"`` explicitly. The ΔT mode is retained
-        for ad-hoc programmatic use only.
+        passes explicitly. The other two modes are retained for ad-hoc
+        programmatic use only.
     m_source : float, optional
         Source water mass flow [kg/s] for ``"fixed_mass_flow"`` mode.
         Defaults to ``SOURCE_MASS_FLOW`` from config.
@@ -327,7 +372,12 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
     T_steam_val = T_steam_override if T_steam_override is not None else T_water_sat
     p_water_val = p_water_for_T_steam(T_steam_val)
     delta_T_src = get_source_delta_T(T_src_in_val)
-    T_src_out_val = T_src_in_val - delta_T_src
+    if source_mode == "fixed_T_out":
+        # Outlet temperature is pinned (see _source_T_out_target); use it as
+        # the evaporator estimate so the warm-start first solve is consistent.
+        T_src_out_val = _source_T_out_target(T_src_in_val)
+    else:
+        T_src_out_val = T_src_in_val - delta_T_src
     T_cond_c1_est = T_evap_c2_val + pinch
     T_cond_c2_est = T_steam_val + pinch
     T_evap_c1_est = T_src_out_val - pinch
@@ -435,6 +485,14 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
             m_val = m_source if m_source is not None else SOURCE_MASS_FLOW
             c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source,
                          m=m_val)
+        elif source_mode == "fixed_T_out":
+            # Fix the source-water OUTLET temperature (stream 12) and let the
+            # mass flow float. T12 ≈ ambient (Tamb + _SOURCE_T_OUT_MARGIN)
+            # extracts essentially all the above-ambient thermal exergy; a
+            # source already at ambient is cooled 10 K below it instead
+            # (see _source_T_out_target).
+            c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source)
+            c12.set_attr(T=_source_T_out_target(T_src_in_val))
         else:  # fixed_delta_T
             c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source)
             c12.set_attr(T=T_src_out_val)
@@ -531,25 +589,36 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         W_el = W_shaft_total / eta_motor
         COP = Q_H * 1000 / W_el  # Q_H [kW] → [W]
 
-        # Exergy analysis — classify source water streams based on temperature vs Tamb
+        # Exergy analysis — classify the source water streams (11 in, 12 out).
         ean = ExergyAnalysis.from_tespy(nw, Tamb=Tamb, pamb=pamb)
         product = {"inputs": ["42"], "outputs": ["41"]}
-        Tamb_degC = Tamb - 273.15
 
-        # Source water inlet (11) → system FUEL: water arrives carrying
-        # useful exergy and is priced at c = 0 (free reservoir).
-        # Source water outlet (13) → system LOSS: whatever exergy remains
-        # after the SRC_HX leaves the system unrecovered.
-        # Split (rather than the previous paired fuel/loss with T_src vs
-        # Tamb conditional) gives a clean, continuous boundary definition
-        # that does not flip at T_src = Tamb. Tamb_degC is kept available
-        # for downstream patches but no longer drives the classification.
-        del Tamb_degC
-        # exerpy convention: "inputs" ADD to the category, "outputs" SUBTRACT.
-        # 11 in fuel.inputs  → +E_11 to system fuel (water arriving with exergy)
-        # 13 in loss.inputs  → +E_13 to system loss (water leaving with exergy)
-        fuel = {"inputs": ["e1", "11"], "outputs": []}
-        loss = {"inputs": ["12"], "outputs": []}
+        # exerpy convention: "inputs" ADD to a category, "outputs" SUBTRACT.
+        #
+        # Source water inlet 11 is always a FUEL input (water arrives carrying
+        # exergy from the free reservoir, priced at c = 0 downstream).
+        #
+        # Source water outlet 12 is classified by the source temperature:
+        #  * T11 > Tamb (the normal case): the water is cooled to essentially
+        #    ambient (Tamb + _SOURCE_T_OUT_MARGIN), so stream 12 carries almost
+        #    no thermal exergy and only its mechanical part remains. Putting 12
+        #    in the FUEL outputs makes the net water fuel E_11 − E_12 the
+        #    (essentially) thermal exergy actually drawn (the equal mechanical
+        #    terms cancel) rather than charging the system for exergy it never
+        #    used. With the hot outlet just above Tamb, SRC_HX is in exerpy
+        #    Case 5/6 so the hot-stream F-rule gives c_12 = c_11 = 0 and the
+        #    fuel-output subtraction carries no spurious cost. No loss stream.
+        #  * T11 = Tamb (source already at the dead state): the water is cooled
+        #    BELOW ambient (T12 = 10 °C), so stream 12 leaves carrying positive
+        #    thermal exergy that is dumped unused — a genuine LOSS. Keep 12 in
+        #    the loss inputs for this case only.
+        source_at_ambient = abs(T_src_in_val - (Tamb - 273.15)) < 1e-9
+        if source_at_ambient:
+            fuel = {"inputs": ["e1", "11"], "outputs": []}
+            loss = {"inputs": ["12"], "outputs": []}
+        else:
+            fuel = {"inputs": ["e1", "11"], "outputs": ["12"]}
+            loss = {}
         ean.analyse(E_F=fuel, E_P=product, E_L=loss)
 
         # Patch dissipative HX before economics can run

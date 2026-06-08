@@ -382,7 +382,9 @@ def run_economics(sim, full_load_hours, e1_c_ct_kwh):
             cost_dict[f"{name}_Z"] = z
         cost_dict["e1_c"] = e1_c_lev
         cost_dict["11_c"] = 0.0   # source water inlet — free reservoir
-        cost_dict["13_c"] = 0.0   # source water outlet — free disposal (loss with c_L = 0)
+        # Source water outlet (stream 12) is a boundary OUTPUT, not an input:
+        # exerpy solves its cost from the SRC_HX cost balance + aux equations,
+        # so no boundary cost is assigned here.
         cost_dict["41_c"] = 0.0
 
         exergoeco = ExergoeconomicAnalysis(ean)

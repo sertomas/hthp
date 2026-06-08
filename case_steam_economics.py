@@ -355,7 +355,7 @@ def main(T_steam=None):
             T_evap_c2_override=T34,
             T_source_in_override=T_src,
             T_steam_override=T_steam,
-            source_mode="fixed_mass_flow",
+            source_mode="fixed_T_out",
             skip_ommen_check=True,
         )
         if sim is None:

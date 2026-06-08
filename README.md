@@ -39,10 +39,16 @@ Fluid combinations:
 
 Key boundary conditions:
 
-- Source water: inlet 20–60 °C (sensitivity range), fixed mass flow
-  `SOURCE_MASS_FLOW = 30 kg/s` (T_out is then free). A fixed-ΔT mode
-  (`source_mode="fixed_delta_T"`) is still implemented in `simulate_hthp`
-  but unused by the pipeline.
+- Source water: inlet 20–60 °C (sensitivity range), fixed outlet temperature
+  `T_out` with the mass flow free (`source_mode="fixed_T_out"`). `T_out` is the
+  ambient dead state plus a 0.01 K margin (20.01 °C) so nearly all above-ambient
+  thermal exergy is extracted while keeping the source-HX hot outlet just above
+  ambient — cooling to *exactly* ambient drives exerpy's HX cost balance into a
+  degenerate case that explodes the outlet specific cost. The exception is a
+  source already at ambient (inlet = 20 °C), cooled to 10 °C so a finite duty
+  remains. Fixed-mass-flow
+  (`source_mode="fixed_mass_flow"`) and fixed-ΔT (`source_mode="fixed_delta_T"`)
+  modes are still implemented in `simulate_hthp` but unused by the pipeline.
 - Steam sink: saturated, 100 / 110 / 120 °C (case-study sweep), 1 MWth
   nominal heating capacity
 - Pinch temperature difference: 5 K
@@ -150,7 +156,7 @@ sim = simulate_hthp(
     T_evap_c2_override=T34,
     T_source_in_override=40,
     T_steam_override=110,
-    source_mode="fixed_mass_flow",  # mirrors the pipeline
+    source_mode="fixed_T_out",  # mirrors the pipeline
 )
 eco = run_economics(sim, full_load_hours=7500, e1_c_ct_kwh=15.9)
 print(f"COP = {sim['COP']:.3f}")
@@ -195,7 +201,7 @@ is needed.
 
 Two public functions:
 
-- **`simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None, T_source_in_override=None, source_mode="fixed_delta_T", m_source=None, T_steam_override=None, skip_ommen_check=False)`**
+- **`simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None, T_source_in_override=None, source_mode="fixed_T_out", m_source=None, T_steam_override=None, skip_ommen_check=False)`**
   Builds a TESPy network, solves it (initial guess + pinch-based pass),
   runs an `exerpy` exergy analysis, and returns a dict with COP, ε, E_F,
   E_P, E_D, sizing data (V̇, W_shaft, HX areas), Q-T sections (for Q-T
