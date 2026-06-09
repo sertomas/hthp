@@ -1,0 +1,30 @@
+{
+  "title": "Automated exergoeconomic screening of a cascade high-temperature heat pump for industrial steam generation",
+  "upload_type": "software",
+  "description": "Source code and result data for the exergy and exergoeconomic analysis of cascaded two-stage high-temperature heat pumps for industrial steam generation, built on the open-source TESPy and ExerPy frameworks. Running the pipeline reproduces the figures and tables of the accompanying journal article.",
+  "license": "MIT",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Tomasinelli, Sergio",
+      "orcid": "0009-0002-5084-436X",
+      "affiliation": "Technische Universitaet Berlin, Chair of Energy Engineering and Climate Protection"
+    },
+    {
+      "name": "Witte, Francesco",
+      "orcid": "0000-0003-4019-0390",
+      "affiliation": "German Aerospace Center (DLR), Institute of Networked Energy Systems"
+    },
+    {
+      "name": "Petrakopoulou, Fontina",
+      "orcid": "0000-0001-6878-4591",
+      "affiliation": "Technische Universitaet Berlin, Chair of Energy Engineering and Climate Protection"
+    }
+  ],
+  "keywords": [
+    "cascade high-temperature heat pumps",
+    "exergoeconomic analysis",
+    "python-based analysis",
+    "natural refrigerants"
+  ]
+}

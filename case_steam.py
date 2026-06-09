@@ -5,11 +5,11 @@ For a given saturated-steam sink temperature (default 110 °C, ≈ 1.43 bar;
 the same pipeline runs for 100 / 110 / 120 °C from main.py), sweep the
 design space:
 
-    fluid pair  ∈  FLUIDS_C1 × FLUIDS_C2   (3 × 2 = 6 combinations)
+    fluid pair  ∈  FLUIDS_C1 x FLUIDS_C2   (3 x 2 = 6 combinations)
     T_source_in ∈  T_SOURCE_IN_RANGE        ([20, 30, 40, 50, 60] °C)
     lift share  ∈  LIFT_SHARE_RANGE         ([0.30, 0.40, 0.50, 0.60, 0.70])
 
-Total: 6 × 5 × 5 = 150 cases per T_steam.
+Total: 6 x 5 x 5 = 150 cases per T_steam.
 
 Every design runs at native scale (``config.M_STEAM`` kg/s on the sink
 side) in ``models.simulate_hthp``, giving Q_H = M_STEAM · Δh_vap of water
@@ -18,13 +18,12 @@ No virtual rescaling — all reported values are at the actual TESPy-converged
 scale.
 
 Out-of-Ommen-envelope designs are flagged, not rejected. Four-state
-classification (in plot_common.classify_status):
+classification (in common.classify_status):
 
     OK      — within Ommen 2015 Table 3 envelope (p, T, V̇).
     V_ONLY  — V̇ outside Ommen but p, T compliant. Operable per IEA HPT
               Annex 58 supplier evidence (e.g. Mayekawa, Hybrid Energy at
-              MWth scale routinely exceed Ommen V_max). Cost extrapolation
-              is the only risk and is cross-checked in stage 5.
+              MWth scale routinely exceed Ommen V_max).
     HARD    — pressure or discharge-temperature violation. Genuinely
               problematic (compressor pressure rating, lubricant stability).
     NOSOLVE — thermodynamic infeasibility (T_crit, P_crit) or TESPy
@@ -56,7 +55,7 @@ from config import (
     p_water_for_T_steam,
 )
 from models import simulate_hthp
-from plot_common import classify_status
+from common import classify_status
 from screen_cascade import (
     COMPRESSOR_SPEC,
     T_DISCH_MAX,
@@ -111,7 +110,7 @@ def screen_one_case(
     dh_steam_kJ_per_kg: float | None = None,
 ) -> dict:
     """Screen one cascade design at native scale (config.M_STEAM kg/s).
-    Q_H is determined by the cycle physics: Q_H = M_STEAM × Δh_vap(T_steam)."""
+    Q_H is determined by the cycle physics: Q_H = M_STEAM x Δh_vap(T_steam)."""
 
     common = _row_common(f1, f2, ls, T_src, T_steam)
 
@@ -200,7 +199,7 @@ def screen_one_case(
         "W_comp1 [kW]": round(W_comp1, 2),
         "W_comp2 [kW]": round(W_comp2, 2),
         "W_el [kW]": round(W_el_kW, 2),
-        "scale_k": 1.0,   # native scale; field kept for backward compatibility
+        "scale_k": 1.0,   # native scale
         "COP": round(COP, 3),
         "eta_Lorenz": round(eta_Lorenz, 3) if eta_Lorenz == eta_Lorenz else "",  # NaN→""
         "p_low_c1 [bar]": round(p_low_c1, 2),
@@ -215,11 +214,6 @@ def screen_one_case(
         "status": "ok",
     }
     row["status_4state"] = classify_status(row)
-
-    # TODO Stage 4 — exergy sidecar JSON dump for OK/V_ONLY rows would go here:
-    #   results/case_steam_<int(T_steam)>/exergy/<f1>_<f2>_LS<ls_pct>_Tsrc<T_src>.json
-    # TODO Stage 5 — compute_pec(sim, k) gated behind --with-pec; columns
-    #   PEC_comp1_kEUR, PEC_comp2_kEUR, ..., PEC_total_kEUR appended here.
 
     return row
 
@@ -264,7 +258,7 @@ def _self_test():
     assert classify_status(nosolve) == "NOSOLVE", \
         f"NOSOLVE misclassified as {classify_status(nosolve)}"
 
-    print("  ✓ classify_status precedence: OK / V_ONLY / HARD / NOSOLVE")
+    print("  [OK] classify_status precedence: OK / V_ONLY / HARD / NOSOLVE")
     print("Self-test passed.")
 
 
@@ -291,9 +285,9 @@ def main(T_steam=None):
           f"p = {p_water_for_T_steam(T_steam):.3f} bar, "
           f"Δh = {dh:.1f} kJ/kg, Q_H_native = {Q_H_native:.0f} kW "
           f"({m_steam_label()})")
-    print(f"Pairs: {len(FLUIDS_C1)} × {len(FLUIDS_C2)} = "
+    print(f"Pairs: {len(FLUIDS_C1)} x {len(FLUIDS_C2)} = "
           f"{len(FLUIDS_C1) * len(FLUIDS_C2)}; "
-          f"sweep over {len(T_SOURCE_IN_RANGE)} T_src × "
+          f"sweep over {len(T_SOURCE_IN_RANGE)} T_src x "
           f"{len(LIFT_SHARE_RANGE)} LS")
 
     rows = []
@@ -337,7 +331,7 @@ def main(T_steam=None):
 
     # Q_H consistency assertion: every solved design must produce the same
     # native Q_H (within numerical tolerance), since m_steam = config.M_STEAM
-    # is fixed and Q_H = m_steam × Δh_vap depends only on T_steam.
+    # is fixed and Q_H = m_steam x Δh_vap depends only on T_steam.
     non_nosolve = df[df["status_4state"] != "NOSOLVE"]
     if not non_nosolve.empty:
         max_dev = (non_nosolve["Q_H_kW"] - Q_H_native).abs().max()

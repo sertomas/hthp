@@ -32,7 +32,6 @@ COMPRESSOR_SPEC = {
     "R1270":   (28,    5,     280,   180),
     "R717-LP": (28,    5,     180,   180),
     "R717-HP": (50,    90,    200,   180),
-    "R744":    (140,   6,     25,    180),
 }
 
 T_DISCH_MAX = 180.0  # °C, Ommen 2015 Table 3 oil-degradation limit

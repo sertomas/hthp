@@ -1,12 +1,12 @@
-"""Consolidated plotting module (the five former plot_*.py merged into one).
+"""Plotting module for the case-study economics and cross-T_steam results.
 
-Per-stage entry points: economics_main (stage 6) / compare_main (stage 7);
-the standalone heatmaps run via the CLI (``python plots.py cdz`` and
-``cP_tsrc``). Shared helpers live in plot_common.py (also used by the
-screening modules). CLI dispatcher at the bottom.
+Entry points: ``economics_main`` (per-T_steam economics figure set) and
+``compare_main`` (cross-T_steam comparison). The per-design and (T_src, T_steam)
+heatmaps run via the CLI (``python plots.py cdz`` and ``python plots.py cP_tsrc``).
+Shared helpers live in common.py.
 """
 from __future__ import annotations
-from plot_common import (
+from common import (
     COL_DOUBLE_IN,
     COL_SINGLE_IN,
     GROUP_COLORS,
@@ -28,43 +28,13 @@ from plot_common import (
 )
 
 
-# ===================== merged from plot_case_steam_economics.py =====================
-"""
-plot_case_steam_economics.py — Visualise the exergoeconomic results
-for one case-study T_steam (modern envelope, LS ∈ {0.30, 0.40, 0.50}).
-
-main.py invokes this module once per ``T_steam`` ∈ T_STEAMS_TO_RUN; paths
-are repointed at runtime via ``_set_paths_economics``. The single-T
-default is ``T_STEAM_CASE_DEFAULT`` (110 °C).
-
-Reads (from results/case_steam_<int(T_steam)>/economics/):
-    economics_base.csv
-    economics_pec_breakdown.csv
-    economics_sensitivity_e1.csv
-    economics_sensitivity_FLH.csv
-    gas_heater/gas_heater.json     (for the gas-reference c_P with carbon)
-
-Writes (to the same folder):
-    cP_grid.png                 — c_P heatmap (panels per LS, fluid pair × T_src)
-    PEC_per_kW_grid.png         — PEC/kW (TCI) (native scale, config.M_STEAM kg/s) with Annex 58 band
-    PEC_components_only.png     — components-only PEC = TCI / F_INSTALL with band
-    PEC_breakdown.png           — stacked-bar component breakdown for top designs
-    cP_vs_e1c.png               — c_P sensitivity to electricity price
-    cP_vs_FLH.png               — c_P sensitivity to full-load hours
-    cP_vs_gas.png               — c_P at base electricity vs gas reference
-    cP_sorted_by_T_src.png      — designs sorted by c_P, faceted by T_src
-    cP_vs_ED_EL_by_Tsrc.png     — c_P against E_D + E_L, faceted by T_src
-    cost_breakdown_per_design.png   — C_D + Z per design, by component group
-    z_breakdown_per_design.png      — Z per design, by component group
-    cost_breakdown_aggregated.png   — same, aggregated per fluid pair
-    z_breakdown_aggregated.png      — same, aggregated per fluid pair
-    tsatsaronis_quadrant.png        — improvement-priority quadrant per pair
-    economic_vs_exergoeconomic_ranking.png
-    best_designs_per_T_src.png      — best-design dashboard
-    lift_share_vs_T_src.png         — LS trends vs T_src per fluid pair
-    price_sensitivity_2d.png        — joint e1 / gas price sweep at base FLH
-    price_sensitivity_2d_FLH<NNNN>.png — same, one per non-base FLH value
-"""
+# ===================== per-T_steam economics figures =====================
+# Visualise the exergoeconomic results for one case-study T_steam
+# (LS in {0.30, 0.40, 0.50}). ``economics_main`` is invoked once per
+# T_steam in T_STEAMS_TO_RUN; paths are repointed at runtime via
+# ``_set_paths_economics``. Reads the economics CSVs and gas_heater.json
+# under results/case_steam_<int(T_steam)>/ and writes the economics figures
+# back to the same case folder.
 
 
 import os
@@ -90,12 +60,9 @@ def _op_string():
             f"gas = {BASE_GAS_C:.0f} EUR/MWh")
 
 
-# Gas reference: computed once via the proper exergy-based gas heater model
-# so the c_P axis stays apples-to-apples with HTHP. The previous shortcut
-# `(BASE_GAS_C / 0.36) / 0.90` was buggy on two counts: it used the
-# ct/kWh → EUR/GJ factor (0.36) on a value in EUR/MWh, and it produced a
-# heat-basis c_P (per Q_steam) instead of exergy-basis (per E_P_steam),
-# which is what HTHP c_P uses.
+# Gas reference: computed via the exergy-based gas heater model so the c_P
+# axis stays on the same exergy basis (per E_P_steam) as the HTHP c_P,
+# keeping the two directly comparable.
 
 _gas_reference_cache = {}
 
@@ -178,11 +145,11 @@ def _set_paths_economics(T_steam):
 # Component grouping for every breakdown plot. COMP+MOT of each cycle are
 # bundled into one bar segment (matches Ommen Tab. 4 cost-row granularity);
 # everything else (VAL1, VAL2, SRC_HX, IHX, SNK_HX) is shown separately.
-# Colours / labels / member list come from ``plot_common.GROUP_STYLE``.
+# Colours / labels / member list come from ``common.GROUP_STYLE``.
 COMP_GROUPS = dict(GROUP_MEMBERS)
 
-# Project 68 (2025) "per unit, no integration" supplier band for 0.5–3 MWth,
-# 110–150 °C — see Figure 1-6 of HPT-PR68-2.
+# Supplier "per unit, no integration" cost band for 0.5-3 MWth, 110-150 °C
+# (Annex 58 reference range).
 ANNEX58_BAND_LOW = 400.0   # EUR/kW
 ANNEX58_BAND_HIGH = 700.0  # EUR/kW
 
@@ -195,25 +162,15 @@ def _load():
                 if os.path.exists(SENS_FLH_CSV) else None)
 
     # Add components-only PEC (purchase equipment cost, no installation)
-    # for fair comparison to Annex 58 / Project 68 supplier €/kW which
-    # excludes integration.
+    # for fair comparison to the Annex 58 supplier EUR/kW which excludes
+    # integration.
     base["PEC_components_only [EUR/kW]"] = (
         base["PEC [EUR/kW]"] / F_INSTALL
     ).round(1)
     return base, bk, sens, sens_flh
 
 
-# NOTE: the old `plot_cP_grid`, `plot_pec_per_kW_TCI` and
-# `plot_pec_per_kW_components` produced ``cP_grid.png`` /
-# ``PEC_per_kW_grid.png`` / ``PEC_components_only.png`` — the same data as
-# the 2×3 per-design heatmaps in ``plot_cdz_sensitivity_per_design.py``
-# (``cP_heatmap.png`` / ``TCI_per_kW_heatmap.png`` /
-# ``PEC_per_kW_heatmap.png``), just with a different layout. They were
-# removed to drop the duplicates; the Annex 58 band overlay that they
-# carried has been ported into the new TCI / PEC heatmaps.
-
-
-# ── Plot 8 & 9: C_D + Z component breakdown per design ────────────────────
+# ── C_D + Z component breakdown per design ────────────────────────────────
 
 def _design_dir(pair, ls, T_src):
     f1, f2 = pair.split("/")
@@ -529,7 +486,7 @@ def _component_group(name):
 # Component grouping for the Tsatsaronis quadrant and rank-flip plots:
 # COMP+MOT of each cycle are bundled, every other component (VAL1, VAL2,
 # SRC_HX, IHX, SNK_HX) is shown individually. Pulled from the central
-# plot_common.GROUP_STYLE so the visual language is consistent with the
+# common.GROUP_STYLE so the visual language is consistent with the
 # other breakdown plots.
 INSIGHT_AGGREGATION = {
     g: (GROUP_MEMBERS[g], GROUP_COLORS[g]) for g in GROUP_ORDER
@@ -563,7 +520,7 @@ def _aggregate_for_insight(comps):
     return pd.DataFrame(rows)
 
 
-# ── Plot 10: ±50 % electricity / gas 2-D price sensitivity ────────────────
+# ── ±50 % electricity / gas 2-D price sensitivity ─────────────────────────
 
 def _hthp_cP_at_FLH(sens_flh, pair, ls, T_src, e1_axis, full_load_hours):
     """Linear-fit HTHP c_P(e1) at a given FLH from the FLH sensitivity sweep.
@@ -998,7 +955,7 @@ def plot_best_designs_per_T_src(base, cdz):
     Four-panel dashboard arranged as 2×2:
       top-left     (1) COP         — bar per T_src
       top-right    (2) ε [%]       — bar per T_src
-      bottom-left  (3) TCI/kW      — bar per T_src (Annex 58 / Project 68 band overlaid)
+      bottom-left  (3) TCI/kW      — bar per T_src (Annex 58 band overlaid)
       bottom-right (4) C_D + Z     — stacked bar per T_src, components
                                       COMP1+MOT1, SRC_HX, VAL1, IHX,
                                       COMP2+MOT2, SNK_HX, VAL2
@@ -1059,14 +1016,14 @@ def plot_best_designs_per_T_src(base, cdz):
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylim(0, max(eps) * 1.20)
 
-    # Panel 3: TCI / kW with Annex 58 / Project 68 band
+    # Panel 3: TCI / kW with Annex 58 band
     ax = axes[2]
     tci = best["PEC [EUR/kW]"].values
     ax.bar(x, tci, color=bar_colors, edgecolor="black", linewidth=0.4)
     ax.axhspan(ANNEX58_BAND_LOW, ANNEX58_BAND_HIGH,
                color="#2e7d32", alpha=0.15, zorder=0,
-               label=f"Annex 58 / Project 68 band (no integration, "
-                     f"{ANNEX58_BAND_LOW:.0f}–{ANNEX58_BAND_HIGH:.0f} EUR/kW)")
+               label=f"Annex 58 band (no integration, "
+                     f"{ANNEX58_BAND_LOW:.0f}-{ANNEX58_BAND_HIGH:.0f} EUR/kW)")
     for k, v in enumerate(tci):
         ax.text(k, v + 12, f"{v:.0f}", ha="center", va="bottom",
                 fontsize=fs(9), fontweight="bold")
@@ -1309,39 +1266,13 @@ def economics_main(T_steam=None):
 
 
 
-# ===================== merged from plot_compare_T_steam.py =====================
-"""
-plot_compare_T_steam.py — Cross-T_steam comparison plots.
-
-Reads per-T_steam economics outputs (one set under
-`results/case_steam_<T>/economics/` for each of T ∈ {100, 110, 120} °C) and
-writes four comparison figures into `results/case_steam_compare/`:
-
-  1. `compare_cP_best_vs_T_steam.png` — for each fluid pair, the lowest c_P
-     achievable at each steam temperature, with the gas+CO₂ reference line
-     at each T_steam (it shifts because the steam exergy E_P depends on T).
-     Tells you whether the HTHP-vs-gas gap widens or narrows with T_steam.
-
-  2. `compare_cP_heatmap.png` — 6 fluid pairs × 3 T_steam columns; cell
-     colour = best c_P [EUR/GJ_ex] across all (LS, T_src) for that combo,
-     with cell text showing the winning (LS, T_src). Designs that beat
-     the gas+CO₂ reference at the corresponding T_steam are highlighted
-     with a green frame.
-
-  3. `exergy_destruction_base.png` — fleet-wide component-level E_D at the
-     base case (LS = 0.50, T_src = 60 °C). Three panels (T_steam ∈ {100,
-     110, 120} °C); x-axis = fluid pair, bars stacked by component. Bars
-     for infeasible (pair, T_steam) combinations at the base case are
-     left empty with an "infeasible" label so the reader can see the
-     fluid-side feasibility envelope at a glance.
-
-  4. `sensitivity_FLH_cel.png` — single 2-D c_P heatmap over (FLH, c_el)
-     for the reference R717/R600a design at base case, with the gas-
-     heater break-even contour overlaid at T_steam = 110 °C. Replaces
-     the two separate 1-D plots (cP_vs_FLH, cP_vs_e1c) in the paper.
-
-Run after `main.py` has populated all three temperatures' economics CSVs.
-"""
+# ===================== cross-T_steam comparison figures =====================
+# Reads per-T_steam economics outputs from results/case_steam_<T>/ and writes
+# the comparison figures into results/case_steam_compare/:
+#   exergy_destruction_base : fleet-wide component E_D at the base case
+#                             (one panel per T_steam, bars per fluid pair).
+#   sensitivity_FLH_cel     : 2-D c_P map over (FLH, c_el) for the reference
+#                             design, with the gas-heater break-even contour.
 
 
 import json
@@ -1401,10 +1332,10 @@ def _best_per_pair(df: pd.DataFrame) -> pd.DataFrame:
              .reset_index(drop=True)
 
 
-# ── Plot 3: fleet exergy destruction at base case (T_src=50, LS=0.30) ─────
+# ── Fleet exergy destruction at base case (T_src=50, LS=0.30) ─────────────
 
 # Per-component breakdown. Colours and labels come from the central
-# palette in plot_common.GROUP_STYLE so every component plot across the
+# palette in common.GROUP_STYLE so every component plot across the
 # project (this one + the cost / Z breakdowns in plot_case_steam_economics)
 # shares the same visual language: COMP+MOT bundled per cycle, every other
 # component (VAL1, VAL2, SRC_HX, IHX, SNK_HX) shown individually.
@@ -1532,7 +1463,7 @@ def plot_fleet_exergy_destruction_base(out_dir: str,
     save_titled_and_paper(fig, out_dir, "exergy_destruction_base")
 
 
-# ── Plot 4: 2-D (FLH, c_el) sensitivity for the reference design ──────────
+# ── 2-D (FLH, c_el) sensitivity for the reference design ──────────────────
 
 def plot_sensitivity_FLH_cel(out_dir: str,
                               ref_pair: str = "R717/R600",
@@ -1717,23 +1648,12 @@ def compare_main():
 
 
 
-# ===================== merged from plot_cP_Tsrc_Tsteam.py =====================
-"""
-plot_cP_Tsrc_Tsteam.py — c_P heatmap over (T_src,in, T_steam) for each fluid pair.
-
-For every (pair, T_src,in, T_steam) combination, the lift share with the
-lowest c_P is selected from ``economics_base.csv``. Each cell shows that
-best c_P and is annotated with the winning LS underneath. Style matches
-the per-design cP / TCI / PEC heatmaps in ``plot_cdz_sensitivity_per_design``
-(plasma_r colormap, equal-aspect cells, luminance-based text colour,
-shared colorbar). One output is written to ``results/case_steam_compare/``:
-
-  * ``cP_heatmap_Tsrc_Tsteam.pdf`` — 2x3 grid, one panel per fluid pair,
-    shared colour scale (T_src,in on x, T_steam on y).
-
-Standalone script — run directly:
-    python plot_cP_Tsrc_Tsteam.py
-"""
+# ===================== c_P heatmap over (T_src,in, T_steam) =====================
+# For every (pair, T_src,in, T_steam) combination, the lift share with the
+# lowest c_P is selected from economics_base.csv. The result is a 2x3 grid
+# (one panel per fluid pair, shared colour scale, T_src,in on x and T_steam
+# on y) written to results/case_steam_compare/cP_heatmap_Tsrc_Tsteam.pdf.
+# Reached via ``python plots.py cP_tsrc``.
 
 
 import os
@@ -1758,10 +1678,9 @@ logging.disable(logging.CRITICAL)
 warnings.filterwarnings("ignore")
 
 
-# Same alphabetical order as ``_discover_pairs`` in
-# ``plot_cdz_sensitivity_per_design.py`` (sorted on-disk folder names), so
-# each fluid pair lands in the same panel position as in ``cP_heatmap.pdf``,
-# ``TCI_per_kW_heatmap.pdf``, etc.
+# Same alphabetical order as ``_discover_pairs`` (sorted on-disk folder
+# names), so each fluid pair lands in the same panel position as in the
+# per-design ``cP_heatmap.pdf`` / ``TCI_per_kW_heatmap.pdf`` heatmaps.
 PAIR_ORDER = ["R1270/R600", "R1270/R600a",
               "R290/R600",  "R290/R600a",
               "R717/R600",  "R717/R600a"]
@@ -1892,27 +1811,9 @@ def cP_tsrc_main():
 
 
 
-# ===================== merged from plot_cdz_sensitivity_per_design.py =====================
-"""
-plot_cdz_sensitivity_per_design.py — Per-design Z+C_D sensitivity plots.
-
-For each fluid pair, generate two figures inside the pair's own
-``designs/<pair>/`` folder:
-
-1. ``cdz_sensitivity.png`` — two side-by-side stacked-bar panels:
-       LEFT  : T_src sweep at LS = 50 %
-       RIGHT : LS sweep   at T_src = 60 °C
-   Same colors as ``cost_breakdown_per_design.png``.
-
-2. ``cP_heatmap.png`` — heatmap of specific product cost c_P [EUR/GJ_ex] on
-   the full (T_src × LS) grid for the pair. Cells annotated with the
-   numerical EUR/GJ value.
-
-Run with::
-
-    python plot_cdz_sensitivity_per_design.py            # all T_steam cases
-    python plot_cdz_sensitivity_per_design.py 110        # single case
-"""
+# ===================== per-design Z+C_D sensitivity and heatmaps =====================
+# Per-design metric heatmaps and the feasibility map, written into the case
+# plots folder. Reached via ``python plots.py cdz [T ...]``.
 
 
 import os
@@ -1937,7 +1838,7 @@ from economics import F_INSTALL, _celf
 # definition stated in the paper.
 C_EL_LEV = BASE_E1_C * _celf(R_N_EL)
 
-# Component grouping pulled from the central plot_common dict. COMP+MOT of
+# Component grouping pulled from the central common dict. COMP+MOT of
 # each cycle are bundled into one segment; everything else (VAL1, VAL2,
 # SRC_HX, IHX, SNK_HX) is plotted individually.
 COMP_GROUPS = dict(GROUP_MEMBERS)
@@ -1954,28 +1855,6 @@ def _op_string():
 
 def _pair_dir(designs_dir, pair):
     return os.path.join(designs_dir, pair.replace("/", "_"))
-
-
-def _design_dir_cdz(designs_dir, pair, ls, T_src):
-    ls_pct = int(round(ls * 100))
-    return os.path.join(_pair_dir(designs_dir, pair),
-                        f"LS{ls_pct}_Tsrc{int(T_src)}")
-
-
-def _load_cdz_row(designs_dir, pair, ls, T_src,
-                  value_col="C_D+Z [EUR/h]"):
-    """Return {group: value} for one design, or None if file is missing."""
-    path = os.path.join(_design_dir_cdz(designs_dir, pair, ls, T_src),
-                        "exergoeco_components.csv")
-    if not os.path.exists(path):
-        return None
-    df = pd.read_csv(path)
-    df = df[df["Component"] != "TOT"].copy()
-    cdz = dict(zip(df["Component"], df[value_col].astype(float)))
-    row = {g: sum(cdz.get(m, 0.0) for m in members)
-           for g, members in COMP_GROUPS.items()}
-    row["TOTAL"] = sum(row[g] for g in COMP_GROUPS)
-    return row
 
 
 def _discover_grid(designs_dir, pair):
@@ -2001,148 +1880,6 @@ def _discover_grid(designs_dir, pair):
     ls_set = {ls for ls in ls_set if ls in (30, 40, 50)}
     return sorted(ls_set), sorted(tsrc_set)
 
-
-# ── Bar-plot panels ───────────────────────────────────────────────────────
-def _draw_stacked_panel(ax, data, x_labels, y_max, xlabel):
-    """Draw one stacked-bar panel; ``data`` is a list of group→value dicts."""
-    x = np.arange(len(data))
-    bottom = np.zeros(len(data))
-    for group in COMP_GROUPS:
-        vals = np.array([d[group] for d in data])
-        ax.bar(x, vals, bottom=bottom,
-               color=GROUP_COLORS[group],
-               edgecolor="black", linewidth=0.3)
-        bottom += vals
-    for k, d in enumerate(data):
-        ax.text(k, d["TOTAL"] + y_max * 0.01, f"{d['TOTAL']:.0f}",
-                ha="center", va="bottom", fontsize=fs(8), fontweight="bold")
-    ax.set_xticks(x)
-    ax.set_xticklabels(x_labels, fontsize=fs(9))
-    ax.set_xlabel(xlabel)
-    ax.set_ylim(0, y_max)
-    ax.grid(axis="y", alpha=0.25)
-
-
-def _collect_tsrc_sweep(designs_dir, pair, ls_pct, t_src_vals):
-    """Return (data list, labels) for the T_src sweep at a single fixed LS
-    (in percent)."""
-    data, labels = [], []
-    for T in t_src_vals:
-        row = _load_cdz_row(designs_dir, pair, ls_pct / 100.0, T)
-        if row is None:
-            continue
-        data.append(row)
-        labels.append(f"{T:g}")
-    return data, labels
-
-
-def _collect_ls_sweep(designs_dir, pair, T_src, ls_vals):
-    """Return (data list, labels) for the LS sweep at a single fixed
-    T_src (°C)."""
-    data, labels = [], []
-    for ls_pct in ls_vals:
-        row = _load_cdz_row(designs_dir, pair, ls_pct / 100.0, T_src)
-        if row is None:
-            continue
-        data.append(row)
-        labels.append(f"{ls_pct}%")
-    return data, labels
-
-
-def _plot_bars(pair, designs_dir, plots_dir, base_name, T_steam,
-                ls_vals, t_src_vals):
-    """Full stacked-bar grid: row 1 = T_src sweeps (one per LS),
-    row 2 = LS sweeps (one per T_src). All subplots share a common y axis
-    so heights are directly comparable across the grid. The two reference
-    cases (LS = ``LS_FIXED``, T_src = ``T_SRC_FIXED``) are flagged in the
-    panel titles."""
-    # ── Row 1: T_src sweep, one panel per LS ──────────────────────────────
-    top_panels = []  # list of (ls_pct, data, labels)
-    for ls_pct in ls_vals:
-        d, lab = _collect_tsrc_sweep(designs_dir, pair, ls_pct, t_src_vals)
-        if d:
-            top_panels.append((ls_pct, d, lab))
-
-    # ── Row 2: LS sweep, one panel per T_src ──────────────────────────────
-    bot_panels = []  # list of (T_src, data, labels)
-    for T in t_src_vals:
-        d, lab = _collect_ls_sweep(designs_dir, pair, T, ls_vals)
-        if d:
-            bot_panels.append((T, d, lab))
-
-    if not top_panels and not bot_panels:
-        return False
-
-    # Shared y limit across the whole grid for visual comparability.
-    all_totals = [r["TOTAL"]
-                  for _, d, _ in top_panels + bot_panels
-                  for r in d]
-    y_max = max(all_totals) * 1.20
-
-    n_top = len(top_panels)
-    n_bot = len(bot_panels)
-    ncols = max(n_top, n_bot, 1)
-    # Per-pair grid lives in designs/<pair>/ — full-page (double-column)
-    # double-row sensitivity layout.
-    fig, axes = plt.subplots(
-        2, ncols,
-        figsize=(COL_DOUBLE_IN, 6.5),
-        sharey=True, squeeze=False,
-    )
-
-    # Row 1 — T_src sweeps
-    for j, (ls_pct, d, lab) in enumerate(top_panels):
-        ax = axes[0][j]
-        _draw_stacked_panel(ax, d, lab, y_max,
-                            xlabel=r"$T_\mathrm{src,in}$  [°C]")
-        ref = (ls_pct == int(LS_FIXED * 100))
-        ax.set_title(
-            rf"$T_\mathrm{{src,in}}$ sweep @ $\mathit{{LS}} = {ls_pct}$ %"
-            + ("  ★" if ref else ""),
-            fontsize=fs(9),
-            fontweight=("bold" if ref else "normal"),
-            color=("#a02020" if ref else "black"),
-        )
-    for j in range(n_top, ncols):
-        axes[0][j].set_visible(False)
-
-    # Row 2 — LS sweeps
-    for j, (T, d, lab) in enumerate(bot_panels):
-        ax = axes[1][j]
-        _draw_stacked_panel(ax, d, lab, y_max,
-                            xlabel=r"Lift share $\mathit{LS}$  [-]")
-        ref = (int(T) == int(T_SRC_FIXED))
-        ax.set_title(
-            rf"$\mathit{{LS}}$ sweep @ $T_\mathrm{{src,in}} = {T:g}$ °C"
-            + ("  ★" if ref else ""),
-            fontsize=fs(9),
-            fontweight=("bold" if ref else "normal"),
-            color=("#a02020" if ref else "black"),
-        )
-    for j in range(n_bot, ncols):
-        axes[1][j].set_visible(False)
-
-    axes[0][0].set_ylabel(r"$\dot{C}_D + \dot{Z}$  [EUR/h]")
-    axes[1][0].set_ylabel(r"$\dot{C}_D + \dot{Z}$  [EUR/h]")
-
-    handles = [mpatches.Patch(color=GROUP_COLORS[g], label=g)
-               for g in COMP_GROUPS]
-    handles.append(mpatches.Patch(
-        facecolor="white", edgecolor="white",
-        label=(rf"★ reference slices ($\mathit{{LS}} = {int(LS_FIXED*100)}$ %, "
-               rf"$T_\mathrm{{src,in}} = {int(T_SRC_FIXED)}$ °C)")))
-    fig.legend(handles=handles, loc="lower center",
-               ncol=min(4, len(handles)),
-               fontsize=fs(7), frameon=False, bbox_to_anchor=(0.5, -0.01))
-
-    fig.suptitle(
-        rf"$\dot{{C}}_D + \dot{{Z}}$ — {pair}  "
-        rf"($T_\mathrm{{steam}}$ = {T_steam:.0f} °C)",
-        fontsize=fs(10), fontweight="bold",
-    )
-    fig.tight_layout(rect=[0, 0.05, 1, 0.94])
-    save_titled_and_paper(fig, plots_dir, base_name)
-    return True
 
 
 # ── Heatmap loaders ──────────────────────────────────────────────────────
@@ -2275,35 +2012,6 @@ def _draw_metric_heatmap(ax, grid, ls_vals, t_src_vals, vmin, vmax,
     return im
 
 
-def _plot_heatmap(pair, data_dir, plots_dir, base_name, T_steam,
-                   ls_vals, t_src_vals):
-    """Per-design c_P heatmap over the full (T_src × LS) grid."""
-    if not ls_vals or not t_src_vals:
-        return False
-    grid = _load_base_grid(data_dir, pair, ls_vals, t_src_vals,
-                            "c_P [EUR/GJ]")
-    if grid is None or np.all(np.isnan(grid)):
-        return False
-
-    # Single-column figure (one panel for one fluid pair, LS × T_src).
-    fig, ax = plt.subplots(figsize=(COL_SINGLE_IN, 2.8))
-    cmap = plt.get_cmap("plasma_r").copy()
-    cmap.set_bad(color="#cccccc")
-    vmin = float(np.nanmin(grid))
-    vmax = float(np.nanmax(grid))
-    im = _draw_metric_heatmap(ax, grid, ls_vals, t_src_vals,
-                               vmin, vmax, cmap, fmt="{:.1f}", fontsize=fs(7))
-    ax.set_xlabel(r"$T_\mathrm{src,in}$  [°C]")
-    ax.set_ylabel(r"Lift share $\mathit{LS}$  [-]")
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label(r"$c_P$  [EUR/GJ$_{ex}$]")
-    fig.suptitle(rf"$c_P$ — {pair}  ($T_\mathrm{{steam}}$ = {T_steam:.0f} °C)",
-                  fontsize=fs(9), fontweight="bold")
-    fig.tight_layout()
-    save_titled_and_paper(fig, plots_dir, base_name)
-    return True
-
-
 def _plot_metric_grid(designs_dir, plots_dir, pairs, T_steam,
                       loader, cbar_label, suptitle, base_name,
                       fmt="{:.1f}", cmap_name="plasma_r"):
@@ -2395,14 +2103,14 @@ def _plot_metric_grid(designs_dir, plots_dir, pairs, T_steam,
 
 
 # ── Categorical (feasibility) heatmaps ────────────────────────────────────
-# Two heatmap variants (one per row): Ommen envelope status (OK / V_ONLY /
-# HARD) and thermodynamic-solver status (none / T_crit_c1 / T_crit_c2 /
-# Pcrit_c1 / convergence). Both rely on integer-coded grids paired with an
-# index→(color, label) map.
+# Feasibility heatmap coded by failure cause: envelope status (OK / V_ONLY /
+# HARD) combined with thermodynamic-solver status (none / T_crit_c1 /
+# T_crit_c2 / Pcrit_c1 / convergence). Built on an integer-coded grid paired
+# with an index→(color, label) map.
 
-# Single "why does it fail" palette, shared by the Ommen and modern
-# feasibility heatmaps. Each cell is coloured by its dominant failure cause:
-# thermodynamic (no solution) reasons take precedence over envelope ones.
+# "Why does it fail" palette for the feasibility heatmap. Each cell is
+# coloured by its dominant failure cause: thermodynamic (no solution) reasons
+# take precedence over envelope ones.
 FAIL_PALETTE = {
     0: ("#66bb6a", "feasible"),
     1: ("#ef6c00", "T_crit cycle 1 (over-critical T)"),
@@ -2598,51 +2306,6 @@ def _plot_categorical_grid(designs_dir, plots_dir, pairs, T_steam,
     return os.path.join(plots_dir, f"{base_name}.pdf")
 
 
-# ── Per-design agent ──────────────────────────────────────────────────────
-def run_agent_for_design(pair, T_steam):
-    """Build both Z+C_D figures for one fluid pair × T_steam case.
-
-    This is the "agent" entry point: invoking it for each (pair, T_steam) is
-    enough to reproduce the full set of plots. ``run_all`` is just a thin
-    loop that drives this agent across every available design.
-
-    Outputs land in ``results/case_steam_<T>/designs/<pair>/``:
-        cdz_sensitivity.png   (two stacked-bar panels of C_D + Z)
-        cP_heatmap.png        (c_P [EUR/GJ_ex] over the T_src × LS grid)
-    """
-    case_dir = case_results_dir(T_steam)
-    designs_dir = os.path.join(case_dir, "designs")
-    data_dir = case_data_dir(T_steam)
-    if not os.path.isdir(designs_dir):
-        print(f"  [skip] no designs dir for T_steam={T_steam:g} C")
-        return False
-
-    pdir = _pair_dir(designs_dir, pair)
-    if not os.path.isdir(pdir):
-        print(f"  [skip] T_steam={T_steam:g} C  {pair}: pair folder missing")
-        return False
-
-    ls_vals, t_src_vals = _discover_grid(designs_dir, pair)
-
-    # Drop legacy PNG / heatmap files from earlier runs so the design
-    # folder stays clean.
-    for legacy_name in ("cdz_heatmap.png", "cdz_sensitivity.png",
-                         "cP_heatmap.png", "cdz_heatmap.pdf"):
-        legacy = os.path.join(pdir, legacy_name)
-        if os.path.exists(legacy):
-            os.remove(legacy)
-
-    ok_bar = _plot_bars(pair, designs_dir, pdir, "cdz_sensitivity",
-                        T_steam, ls_vals, t_src_vals)
-    ok_hm = _plot_heatmap(pair, data_dir, pdir, "cP_heatmap",
-                          T_steam, ls_vals, t_src_vals)
-
-    print(f"  [{'ok' if ok_bar else 'skip'}/"
-          f"{'ok' if ok_hm else 'skip'}] "
-          f"T_steam={T_steam:g} C  {pair:<14s} -> {pdir}")
-    return ok_bar or ok_hm
-
-
 def _discover_pairs(designs_dir):
     """Return sorted list of fluid pairs (e.g. ``R290/R600``) present on disk."""
     if not os.path.isdir(designs_dir):
@@ -2658,9 +2321,9 @@ def _discover_pairs(designs_dir):
 
 
 # ── Metric registry ───────────────────────────────────────────────────────
-# Single source of truth for the 13 continuous + 2 categorical per-design
-# heatmaps. Each entry is consumed by ``run_all`` and produces a pair of
-# PNGs (``<base_name>.png`` paper variant + ``<base_name>_titled.png``).
+# Single source of truth for the 13 continuous per-design heatmaps. Each
+# entry is consumed by ``run_all`` and produces a paper variant plus a
+# titled variant via ``save_titled_and_paper``.
 
 def _build_continuous_metrics(data_dir, designs_dir, case_dir, T_steam):
     """Return the 13 continuous-metric specs as (label, kwargs) tuples for
@@ -2781,8 +2444,6 @@ def run_all(T_steams=None):
             print(f"[T_steam={T_steam:g} C] no designs found, skipping")
             continue
         print(f"[T_steam={T_steam:g} C] {len(pairs)} pairs: {pairs}")
-        for pair in pairs:
-            run_agent_for_design(pair, T_steam)
 
         # 13 continuous-metric per-design heatmaps (paper + titled variants).
         for label, kwargs in _build_continuous_metrics(

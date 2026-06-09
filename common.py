@@ -1,5 +1,5 @@
 """
-plot_common.py — Helpers shared by the cascade-screening plotters.
+common.py — Helpers shared by the cascade-screening plotters.
 
 Provides the 4-state classification (OK / V_ONLY / HARD / NOSOLVE) used by
 ``case_steam.py`` and the feasibility heatmap. V̇-only Ommen-envelope
@@ -17,8 +17,8 @@ import os
 # OK      — all Ommen flags pass (p_OK_*, T_OK_*, V_OK_* all True)
 # V_ONLY  — p_OK_* and T_OK_* all True; V_OK_c1 or V_OK_c2 False.
 #           Operable per Annex 58 supplier evidence: real machines exist
-#           above Ommen 2015's 5–280 m³/h Type-2 V_max (e.g. Mayekawa, Hybrid
-#           Energy, Heaten at 1–5 MWth). Cost extrapolation is the only
+#           above Ommen 2015's 5-280 m³/h Type-2 V_max (e.g. Mayekawa, Hybrid
+#           Energy, Heaten at 1-5 MWth). Cost extrapolation is the only
 #           risk, mitigated by Annex 58 €/kW band cross-checks (Stage 5).
 # HARD    — p_OK_c1, p_OK_c2, T_OK_c1 or T_OK_c2 False. Pressure rating or
 #           oil-degradation issue — genuinely problematic.
@@ -112,20 +112,17 @@ def nosolve_short(cls: str) -> str:
 
 
 # ── Component palette ─────────────────────────────────────────────────────
-# Single source of truth for every component-level plot in the project so
-# the visual language stays consistent. Conventions:
+# Shared colour/label scheme for every component-level plot. Conventions:
 #   * COMP and MOT of the same cycle are bundled into a single "COMP+MOT"
 #     group (one bar segment, one legend entry). This matches the Ommen
 #     Tab. 4 cost-row granularity where the motor PEC is rolled into the
 #     compressor for HC fluids.
 #   * Every other component is shown separately: VAL1 ≠ VAL2, SRC_HX (cycle
 #     1 evaporator), IHX (cascade), SNK_HX (cycle 2 condenser).
-#   * Cycle-1 components inherit the original "aggregated" hues from
-#     z_breakdown_aggregated.png (blue, green, pink). The corresponding
-#     cycle-2 component uses a lighter pastel tone of the same hue so the
-#     two cycles read as a saturation pair at a glance. SRC_HX and SNK_HX
-#     have no opposite-cycle sibling, so each keeps its own distinctive
-#     colour (green / red).
+#   * Cycle-1 components use the base hues (blue, green, pink); the matching
+#     cycle-2 component uses a lighter pastel of the same hue so the two
+#     cycles read as a saturation pair at a glance. SRC_HX and SNK_HX have
+#     no opposite-cycle sibling, so each keeps its own colour (green / red).
 #
 # Stacking order: cycle-1 components at the bottom, cascade IHX in the
 # middle, cycle-2 components on top — each bar reads
@@ -265,9 +262,7 @@ def apply_publication_style():
 
 
 def fs(pt):
-    """Identity helper — kept for source-level compatibility with the
-    short-lived ``RENDER_SCALE`` experiment so all per-call
-    ``fontsize=fs(N)`` literals continue to work unchanged."""
+    """Return the point size unchanged; one hook for all ``fontsize=fs(N)`` call sites."""
     return pt
 
 

@@ -1,8 +1,8 @@
 """
 export_design_details.py — Per-design TESPy + exergoeconomic export.
 
-For every OK (modern envelope) design at LS ∈ {0.30, 0.40, 0.50} of the
-case study, at the requested T_steam, re-run simulate_hthp and dump:
+For every feasible design at LS ∈ {0.30, 0.40, 0.50} of the case study,
+at the requested T_steam, re-run simulate_hthp and dump:
 
     results/case_steam_<int(T_steam)>/designs/<f1>_<f2>/LS<XX>_Tsrc<YY>/
         connections.csv                    — TESPy state per labeled conn
@@ -10,7 +10,7 @@ case study, at the requested T_steam, re-run simulate_hthp and dump:
         components.csv                     — TESPy component parameters
                                               (P, Q, pr, eta_s, kA, ttd, ...)
         qt_diagram.pdf                     — Q-T profiles for SRC_HX, IHX, SNK_HX
-        logph_diagram.pdf                  — log(p)-h via fluprodia (1–200 bar)
+        logph_diagram.pdf                  — log(p)-h via fluprodia (1-200 bar)
         exergoeco_components.csv           — C_F, C_P, C_D, Z, c_F, c_P, f, r
         exergoeco_connections_material.csv — exergy + cost (C^T, C^M, C^TOT, c^T,...)
         exergoeco_connections_nonmat.csv   — power/heat connections (C^TOT, c^TOT)
@@ -21,7 +21,7 @@ BASE_E1_C from config — same scale that case_steam_economics.py uses for
 the headline c_P numbers.
 
 T_steam defaults to T_STEAM_CASE_DEFAULT (110 °C) when ``main(T_steam=None)``
-is invoked. main.py drives this stage at 100 / 110 / 120 °C in turn.
+is invoked.
 """
 
 from __future__ import annotations
@@ -51,9 +51,7 @@ logging.disable(logging.CRITICAL)
 warnings.filterwarnings("ignore")
 
 
-# Module-level path globals are rewritten by ``_set_paths_for_T_steam`` at
-# the start of ``main`` for each case-study T_steam; the placeholders below
-# only matter if the helpers below are called before that override.
+# Path globals set by ``_set_paths_for_T_steam`` for each T_steam case.
 CASE_DIR = ""
 ENRICHED_CSV = ""
 DESIGNS_DIR = ""
@@ -217,12 +215,9 @@ HX_TITLES = {
 }
 
 
-# log(p)-h plotting via fluprodia.
-#
-# Uses set_isolines_subcritical(T_min=-40, T_max=T_crit-2) for a clean
-# subcritical isoline set (saturation dome + isobars + isotherms + isenthalps
-# + isentropes), and pins the y-axis to a fixed engineering window
-# (LOGPH_P_MIN_BAR – LOGPH_P_MAX_BAR = 1–200 bar) so every design plots
+# log(p)-h plotting via fluprodia. Subcritical isoline set (saturation dome,
+# isobars, isotherms, isenthalps, isentropes) with the y-axis pinned to a fixed
+# window (LOGPH_P_MIN_BAR - LOGPH_P_MAX_BAR = 1-200 bar) so every design plots
 # on the same scale.
 
 LOGPH_P_MIN_BAR = 1.0
@@ -257,11 +252,9 @@ def _plot_logph_one_cycle(fig, ax, fluid, points, cycle_label):
         y_min=LOGPH_P_MIN_BAR, y_max=LOGPH_P_MAX_BAR,
     )
 
-    # fluprodia hardcodes the isoline labels at fontsize=5. The figure is
-    # authored at the final print width (see _plot_logph), so these point
-    # sizes ARE the printed sizes — keep the dense isoline labels at the
-    # 6 pt Elsevier sub-/superscript floor and give the cycle annotations
-    # the 9 pt body size.
+    # The figure is authored at the final print width (see _plot_logph), so
+    # these point sizes are the printed sizes. Isoline labels sit at the 6 pt
+    # floor and the cycle annotations get the 9 pt body size.
     for txt in ax.texts:
         txt.set_fontsize(6)
 
@@ -291,9 +284,7 @@ def _plot_logph(sim, out_path, title_extra=""):
     states = sim["cycle_states"]
 
     # Author at full-page width (190 mm = 7.48 in) so the figure imports
-    # into LaTeX at 1:1 and the point sizes set below are the printed
-    # sizes. The old 18 in canvas shrank every font by ~0.42x at
-    # \textwidth, pushing the isoline labels to ~3.7 pt.
+    # into LaTeX at 1:1 and the point sizes set below are the printed sizes.
     fig, (ax_c1, ax_c2) = plt.subplots(1, 2, figsize=(7.48, 3.6))
     _plot_logph_one_cycle(fig, ax_c1, f1, states["cycle1"]["points"],
                           f"Cycle 1 ({f1})")
@@ -307,7 +298,7 @@ def _plot_logph(sim, out_path, title_extra=""):
 
 def _plot_qt(sim, out_path, title_extra=""):
     # Authored at full-page print width (190 mm = 7.48 in) so point sizes
-    # are the printed sizes (no \textwidth downscaling of the fonts).
+    # are the printed sizes.
     fig, axes = plt.subplots(1, 3, figsize=(7.48, 2.9), squeeze=False)
     axes = axes[0]
     for ax, hx_name in zip(axes, HX_NAMES):
@@ -324,7 +315,7 @@ def _plot_qt(sim, out_path, title_extra=""):
         ax.tick_params(axis="both", which="major", labelsize=8)
         ax.legend(fontsize=7, loc="best")
         ax.grid(alpha=0.3)
-    fig.suptitle(f"Q–T diagrams — {title_extra}", fontsize=9, fontweight="bold")
+    fig.suptitle(f"Q-T diagrams — {title_extra}", fontsize=9, fontweight="bold")
     fig.tight_layout(rect=[0, 0, 1, 0.93])
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
@@ -438,7 +429,7 @@ def main(T_steam=None):
             if (i + 1) % 12 == 0 or (i + 1) == n:
                 eco_str = (f"  c_P={c_P:.1f} EUR/GJ  Z={Z_sum:.2f} EUR/h"
                             if c_P is not None else "  (eco failed)")
-                print(f"{tag}  ✓  COP={sim['COP']:.2f}{eco_str}  → {out_dir}")
+                print(f"{tag}  [OK]  COP={sim['COP']:.2f}{eco_str}  -> {out_dir}")
         except Exception as e:
             print(f"{tag}  EXPORT FAILED: {e}")
             n_fail += 1

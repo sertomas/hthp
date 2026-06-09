@@ -9,13 +9,10 @@ cold-side phase) and the area contribution is ``Q / (LMTD * U)``.
 Single-phase / two-phase U values come from Ommen 2015 (single-stage
 heat-pump study, Table A.3). The remaining combinations (two-phase /
 two-phase and two-phase / gas in both directions) are not reported by
-Ommen and are engineering assumptions retained for compatibility with
-the cascaded topology, where the IHX has two-phase fluid on both sides.
+Ommen and are engineering assumptions for the cascaded topology, where
+the IHX has two-phase fluid on both sides.
 
-Ported from the hthp_optimization repository
-(calculate_heatexchanger_area.py), adapted to the TESPy 0.9.x public API
-(``hex.calc_sections()`` replaces the older ``_assign_steps`` /
-``_get_moving_steps`` helpers).
+Section heat duties and LMTDs come from TESPy's ``hex.calc_sections()``.
 
 References
 ----------
@@ -39,7 +36,7 @@ from tespy.tools.fluid_properties import phase_mix_ph, h_mix_pQ
 #   (1,0) condenser two-phase zone  U_cond = 3696
 #   (2,0) condenser desuperheat     U_sh,c =  466
 # The other four entries (1,1), (1,2), (2,1), (2,2) are not given by
-# Ommen and are taken over verbatim from the hthp_optimization repo.
+# Ommen and are engineering assumptions not reported in Ommen.
 U_VALUES = {
     (0, 0): 1494,
     (0, 1): 1483,

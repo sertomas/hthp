@@ -1,5 +1,5 @@
 """
-enrich_screen.py — Stage 2: enrich the single Ommen screen with saturation
+enrich_screen.py — enrich the single Ommen screen with saturation
 temperatures and write the sorted / per-pair CSV views.
 
 There is ONE screening (``case_steam.py``, Ommen 2015 envelope). A design is
@@ -10,7 +10,7 @@ information only (which limit each design exceeds and by how much, visualised
 by the ``feasibility_ommen`` heatmap); they do NOT exclude a design. Every
 non-NOSOLVE design is carried into the economics.
 
-Run via main.py (Stage 2) or directly:
+Run via main.py or directly:
     python enrich_screen.py            # uses T_STEAM_CASE_DEFAULT
 """
 
@@ -58,7 +58,7 @@ def _enrich_row(row):
 
 
 def main(T_steam=None):
-    """Enrich the Stage-1 screen CSV and write the sorted / per-pair views."""
+    """Enrich the screen CSV and write the sorted / per-pair views."""
     if T_steam is None:
         from config import T_STEAM_CASE_DEFAULT
         T_steam = T_STEAM_CASE_DEFAULT

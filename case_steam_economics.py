@@ -1,6 +1,6 @@
 """
 case_steam_economics.py — Exergoeconomic analysis for the OK designs of
-the case study (Project 68 modern envelope), for one steam temperature.
+the case study, for one steam temperature.
 
 Pipeline:
 
@@ -29,7 +29,7 @@ The pipeline also passes ``co2_price_eur_per_t = BASE_CO2_PRICE`` to
 plots includes the EU ETS / BEHG carbon charge by default (set
 ``BASE_CO2_PRICE = 0`` in config.py to reproduce the Ommen 2015 baseline).
 
-Invoke through main.py (Stage 4) or directly:
+Invoke through main.py or directly:
     python case_steam_economics.py
 """
 
@@ -66,9 +66,7 @@ logging.disable(logging.CRITICAL)
 warnings.filterwarnings("ignore")
 
 
-# Module-level path globals are rewritten by ``_set_paths_for_T_steam`` at
-# the start of ``main`` for each case-study T_steam; the placeholders below
-# only matter if the helpers below are called before that override.
+# Path globals set per case-study T_steam by ``_set_paths_for_T_steam``.
 CASE_DIR = ""
 DATA_DIR = ""
 GAS_HEATER_DIR = ""
@@ -84,8 +82,7 @@ def _set_paths_for_T_steam(T_steam):
     GAS_HEATER_DIR = case_gas_heater_dir(T_steam)
     ENRICHED_CSV = os.path.join(CASE_DIR, f"case_steam_{int(T_steam)}_enriched.csv")
 
-# Full-load-hours sensitivity sweep (5000–7500 h/a, 500 h steps).
-# Lower utilisation spreads CAPEX over fewer operating hours → higher c_P.
+# Full-load-hours sensitivity sweep (5000-7500 h/a, 500 h steps).
 FULL_LOAD_HOURS_RANGE = list(range(5000, 7501, 500))
 
 # E1_C_RANGE in config is in EUR/MWh; run_economics expects ct/kWh.
@@ -95,9 +92,7 @@ def _eur_mwh_to_ct_kwh(p_eur_mwh: float) -> float:
 
 # ── Gas heater persistence ──────────────────────────────────────────────────
 # Per-stream and per-component dumps from the TESPy + exerpy gas-burner
-# simulation. Matches the per-design export style used for HTHP designs but
-# stays under economics/gas_heater/ since the gas burner is the economic
-# reference, not a design under optimisation.
+# simulation, written under economics/gas_heater/ as the economic reference.
 
 def _gas_heater_connections_df(sim):
     """Build state-point CSV for the gas burner streams.
@@ -227,8 +222,7 @@ def _write_gas_heater_export(sim, eco, out_dir):
         df_non_mat.to_csv(os.path.join(out_dir, "exergoeco_connections_nonmat.csv"),
                           index=False, float_format="%.4g")
 
-    # Full JSON dump (everything reproducible). exerpy_data may contain numpy
-    # scalars; route them through float() / int() in the default handler.
+    # Full JSON dump. Route numpy scalars through float()/int() here.
     def _json_safe(o):
         try:
             import numpy as _np
@@ -493,7 +487,7 @@ def main(T_steam=None):
     sens_flh_df.to_csv(os.path.join(DATA_DIR, "economics_sensitivity_FLH.csv"),
                         index=False)
     print(f"Wrote {os.path.join(DATA_DIR, 'economics_sensitivity_FLH.csv')}  "
-          f"({FULL_LOAD_HOURS_RANGE[0]}–{FULL_LOAD_HOURS_RANGE[-1]} h/a, "
+          f"({FULL_LOAD_HOURS_RANGE[0]}-{FULL_LOAD_HOURS_RANGE[-1]} h/a, "
           f"{len(FULL_LOAD_HOURS_RANGE)} steps)")
 
     # ── Summary ────────────────────────────────────────────────────────────
@@ -507,7 +501,7 @@ def main(T_steam=None):
 
     print()
     print("=" * 90)
-    print(f"Annex 58 / Project 68 €/kW band for 0.5–3 MWth, 110–150 °C: ~400–700 €/kW")
+    print(f"Annex 58 EUR/kW band for 0.5-3 MWth, 110-150 degC: ~400-700 EUR/kW")
     print(f"Our PEC range (Q_H = {Q_H_native_kW:.0f} kW native): "
           f"{base_df['PEC [EUR/kW]'].min():.0f} to "
           f"{base_df['PEC [EUR/kW]'].max():.0f} EUR/kW "

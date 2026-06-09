@@ -1,7 +1,7 @@
-exerpy
-tespy
-numpy
-pandas
-matplotlib
-CoolProp
-fluprodia
+exerpy==0.0.7
+tespy==0.9.12
+numpy==2.4.2
+pandas==3.0.0
+matplotlib==3.10.8
+CoolProp==7.2.0
+fluprodia==4.0
