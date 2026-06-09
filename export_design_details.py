@@ -9,8 +9,8 @@ case study, at the requested T_steam, re-run simulate_hthp and dump:
                                               (m, T, p, h, s, v, e_T/e_M/e_PH)
         components.csv                     — TESPy component parameters
                                               (P, Q, pr, eta_s, kA, ttd, ...)
-        qt_diagram.png                     — Q-T profiles for SRC_HX, IHX, SNK_HX
-        logph_diagram.png                  — log(p)-h via fluprodia (1–200 bar)
+        qt_diagram.pdf                     — Q-T profiles for SRC_HX, IHX, SNK_HX
+        logph_diagram.pdf                  — log(p)-h via fluprodia (1–200 bar)
         exergoeco_components.csv           — C_F, C_P, C_D, Z, c_F, c_P, f, r
         exergoeco_connections_material.csv — exergy + cost (C^T, C^M, C^TOT, c^T,...)
         exergoeco_connections_nonmat.csv   — power/heat connections (C^TOT, c^TOT)
@@ -209,10 +209,11 @@ def _components_dataframe(sim):
 # ── Q-T plot ────────────────────────────────────────────────────────────────
 
 HX_NAMES = ["SRC_HX", "IHX", "SNK_HX"]
+# Two-line titles so each fits a ~2.5 in panel at full-page print width.
 HX_TITLES = {
-    "SRC_HX": "Source HX (cycle-1 evaporator)",
-    "IHX":    "Internal HX (cycle-1 condenser / cycle-2 evaporator)",
-    "SNK_HX": "Sink HX (cycle-2 condenser, generates steam)",
+    "SRC_HX": "Source HX\n(cycle-1 evaporator)",
+    "IHX":    "Internal HX\n(cycle-1 cond. / cycle-2 evap.)",
+    "SNK_HX": "Sink HX\n(cycle-2 condenser, steam)",
 }
 
 
@@ -237,7 +238,7 @@ def _get_diagram(fluid):
         d = FluidPropertyDiagram(fluid)
         d.set_unit_system(T="°C", p="bar", h="kJ/kg", s="kJ/kgK")
         T_crit = d.convert_from_SI(d.T_crit, "T")
-        d.set_isolines_subcritical(T_min=-40, T_max=T_crit - 2)
+        d.set_isolines_subcritical(T_min=-40, T_max=200)
         d.calc_isolines()
         _diagram_cache[fluid] = d
     return _diagram_cache[fluid]
@@ -256,30 +257,31 @@ def _plot_logph_one_cycle(fig, ax, fluid, points, cycle_label):
         y_min=LOGPH_P_MIN_BAR, y_max=LOGPH_P_MAX_BAR,
     )
 
-    # fluprodia hardcodes the isoline labels at fontsize=5; these are the
-    # only texts on the axis at this point (cycle-point annotations are
-    # added below), so bump them all to match the enlarged axes.
+    # fluprodia hardcodes the isoline labels at fontsize=5. The figure is
+    # authored at the final print width (see _plot_logph), so these point
+    # sizes ARE the printed sizes — keep the dense isoline labels at the
+    # 6 pt Elsevier sub-/superscript floor and give the cycle annotations
+    # the 9 pt body size.
     for txt in ax.texts:
-        txt.set_fontsize(9)
+        txt.set_fontsize(6)
 
     # Closed cycle loop (last point → first)
     h_cycle = h_vals + [h_vals[0]]
     p_cycle = p_vals + [p_vals[0]]
-    ax.plot(h_cycle, p_cycle, "r-", linewidth=2.0, zorder=3)
-    ax.plot(h_vals, p_vals, "ko", markersize=7, zorder=4)
+    ax.plot(h_cycle, p_cycle, "r-", linewidth=1.3, zorder=3)
+    ax.plot(h_vals, p_vals, "ko", markersize=4, zorder=4)
 
     for pt in points:
         ax.annotate(pt["label"], (pt["h"], pt["p"]),
-                    textcoords="offset points", xytext=(7, 7),
-                    fontsize=12)
+                    textcoords="offset points", xytext=(4, 4),
+                    fontsize=9, fontweight="bold")
 
     ax.set_ylim(LOGPH_P_MIN_BAR, LOGPH_P_MAX_BAR)
-    # Enlarge axis labels / tick labels so the figure stays legible when
-    # placed in the paper at reduced size.
-    ax.tick_params(axis="both", which="major", labelsize=12)
-    ax.xaxis.label.set_size(14)
-    ax.yaxis.label.set_size(14)
-    ax.set_title(cycle_label, fontsize=15, pad=14)
+    # Journal point sizes (figure is authored at print width, so 1:1).
+    ax.tick_params(axis="both", which="major", labelsize=8)
+    ax.xaxis.label.set_size(9)
+    ax.yaxis.label.set_size(9)
+    ax.set_title(cycle_label, fontsize=10, pad=6)
 
 
 def _plot_logph(sim, out_path, title_extra=""):
@@ -288,7 +290,11 @@ def _plot_logph(sim, out_path, title_extra=""):
     f2 = sim["fluid_cycle2"]
     states = sim["cycle_states"]
 
-    fig, (ax_c1, ax_c2) = plt.subplots(1, 2, figsize=(18, 7))
+    # Author at full-page width (190 mm = 7.48 in) so the figure imports
+    # into LaTeX at 1:1 and the point sizes set below are the printed
+    # sizes. The old 18 in canvas shrank every font by ~0.42x at
+    # \textwidth, pushing the isoline labels to ~3.7 pt.
+    fig, (ax_c1, ax_c2) = plt.subplots(1, 2, figsize=(7.48, 3.6))
     _plot_logph_one_cycle(fig, ax_c1, f1, states["cycle1"]["points"],
                           f"Cycle 1 ({f1})")
     _plot_logph_one_cycle(fig, ax_c2, f2, states["cycle2"]["points"],
@@ -300,24 +306,27 @@ def _plot_logph(sim, out_path, title_extra=""):
 
 
 def _plot_qt(sim, out_path, title_extra=""):
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5), squeeze=False)
+    # Authored at full-page print width (190 mm = 7.48 in) so point sizes
+    # are the printed sizes (no \textwidth downscaling of the fonts).
+    fig, axes = plt.subplots(1, 3, figsize=(7.48, 2.9), squeeze=False)
     axes = axes[0]
     for ax, hx_name in zip(axes, HX_NAMES):
         qt = sim["qt_sections"][hx_name]
         Q = np.asarray(qt["Q"])
         T_hot = np.asarray(qt["T_hot"])
         T_cold = np.asarray(qt["T_cold"])
-        ax.plot(Q, T_hot, "r-o", markersize=4, linewidth=1.4, label="Hot side")
-        ax.plot(Q, T_cold, "b-o", markersize=4, linewidth=1.4, label="Cold side")
+        ax.plot(Q, T_hot, "r-o", markersize=3, linewidth=1.0, label="Hot side")
+        ax.plot(Q, T_cold, "b-o", markersize=3, linewidth=1.0, label="Cold side")
         ax.fill_between(Q, T_cold, T_hot, alpha=0.10, color="gray")
-        ax.set_xlabel("Q [kW]")
-        ax.set_ylabel("T [°C]")
-        ax.set_title(HX_TITLES[hx_name], fontsize=10)
-        ax.legend(fontsize=8, loc="best")
+        ax.set_xlabel("Q [kW]", fontsize=9)
+        ax.set_ylabel("T [°C]", fontsize=9)
+        ax.set_title(HX_TITLES[hx_name], fontsize=9)
+        ax.tick_params(axis="both", which="major", labelsize=8)
+        ax.legend(fontsize=7, loc="best")
         ax.grid(alpha=0.3)
-    fig.suptitle(f"Q–T diagrams — {title_extra}", fontsize=11, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
-    fig.savefig(out_path, dpi=130, bbox_inches="tight")
+    fig.suptitle(f"Q–T diagrams — {title_extra}", fontsize=9, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -369,17 +378,16 @@ def main(T_steam=None):
     os.makedirs(DESIGNS_DIR, exist_ok=True)
 
     df = pd.read_csv(ENRICHED_CSV)
-    # Include V_ONLY designs: their p/T limits are met under the modern
-    # envelope, only V_dot exceeds the catalog ceiling. The cost correlation
-    # is extrapolated past Ommen 2015's calibration range, but the design is
-    # physically valid and matches what case_steam_economics.py already
-    # accepts on the economics side.
-    designs = df[(df["status_modern"].isin(["OK", "V_ONLY"]))
+    # Every thermodynamically-feasible design (status_4state != NOSOLVE). The
+    # Ommen p / T_disch / V̇ limits are informational only and do not exclude;
+    # this matches the set case_steam_economics.py runs economics on.
+    designs = df[(df["status_4state"] != "NOSOLVE")
                  & (df["ls"].isin([0.30, 0.40, 0.50]))].copy()
     designs = designs.sort_values(by=["f1", "f2", "ls", "T_src"]).reset_index(drop=True)
     n = len(designs)
-    print(f"Exporting per-design TESPy details for {n} OK + V_ONLY (modern) "
-          f"designs at LS ∈ {{0.30, 0.40, 0.50}} (T_steam = {T_steam:.0f} °C)\n")
+    print(f"Exporting per-design TESPy details for {n} thermodynamically-"
+          f"feasible designs at LS ∈ {{0.30, 0.40, 0.50}} "
+          f"(T_steam = {T_steam:.0f} °C)\n")
 
     n_ok = 0
     n_fail = 0
@@ -419,7 +427,7 @@ def main(T_steam=None):
             title = (f"{f1}/{f2}, LS = {ls_pct}%, T_src = {int(T_src)} °C, "
                      f"T_steam = {int(T_steam)} °C  |  COP = {sim['COP']:.2f}, "
                      f"ε = {sim['epsilon']:.3f}")
-            _plot_qt(sim, os.path.join(out_dir, "qt_diagram.png"), title_extra=title)
+            _plot_qt(sim, os.path.join(out_dir, "qt_diagram.pdf"), title_extra=title)
             _plot_logph(sim, os.path.join(out_dir, "logph_diagram.pdf"), title_extra=title)
 
             c_P, Z_sum = _export_exergoeco_csvs(sim, out_dir)
@@ -441,8 +449,8 @@ def main(T_steam=None):
     print(f"Designs failed (sim/export)   : {n_fail}")
     print(f"Designs with eco failure      : {n_eco_fail}")
     print(f"Output root                   : {DESIGNS_DIR}/")
-    print("Per design: connections.csv, components.csv, qt_diagram.png, "
-          "logph_diagram.png,")
+    print("Per design: connections.csv, components.csv, qt_diagram.pdf, "
+          "logph_diagram.pdf,")
     print("           exergoeco_components.csv, "
           "exergoeco_connections_material.csv,")
     print("           exergoeco_connections_nonmat.csv")

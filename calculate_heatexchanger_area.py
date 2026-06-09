@@ -26,7 +26,7 @@ compression heat pumps. Int. J. Refrigeration 2015, 55, 168-182.
 
 import numpy as np
 
-from tespy.tools.fluid_properties import phase_mix_ph
+from tespy.tools.fluid_properties import phase_mix_ph, h_mix_pQ
 
 
 # Overall heat-transfer coefficients U [W/(m^2 K)] by phase pair.
@@ -52,46 +52,35 @@ U_VALUES = {
     (2, 2):   35,  # assumed (not in Ommen)
 }
 
-_PHASE_TO_INT = {"l": 0, "tp": 1, "g": 2}
-
-
-def _phase_at_step(conn, h_step):
-    """Phase index (0=liquid, 1=two-phase, 2=gas) at enthalpy ``h_step``
-    for the stream described by ``conn`` (pressure / fluid taken from the
-    connection; pr=1 in every HX so pressure is constant along the side).
-
-    Falls back to two-phase (1) when CoolProp returns ``"state not
-    recognised"``, which happens for some refrigerants (notably R717 near
-    saturation at high reduced pressure) when the enthalpy step lands
-    exactly on the saturation boundary. The two-phase fallback is
-    consistent with ``_phase_per_section`` snapping straddled sections to
-    the bordering single-phase value, which keeps the sizing conservative.
+def _sat_enthalpies(conn):
+    """Saturation liquid (x=0) and vapor (x=1) specific enthalpies [J/kg]
+    at the connection's pressure (constant along each HX side, pr=1).
+    Returns ``(None, None)`` when the side is supercritical and no
+    saturation enthalpies exist.
     """
-    label = phase_mix_ph(conn.p.val_SI, h_step, conn.fluid_data, conn.mixing_rule)
-    return _PHASE_TO_INT.get(label, 1)
+    p = conn.p.val_SI
+    try:
+        return (h_mix_pQ(p, 0.0, conn.fluid_data, conn.mixing_rule),
+                h_mix_pQ(p, 1.0, conn.fluid_data, conn.mixing_rule))
+    except Exception:
+        return None, None
 
 
-def _phase_per_section(phase_steps):
-    """Collapse a per-step phase array (length N) into a per-section
-    phase array (length N-1).
-
-    Sections that lie cleanly inside one phase keep their phase. Sections
-    that straddle a saturation boundary (0<->1 or 1<->2) are snapped to
-    the bordering single-phase value (0 or 2 respectively) — same
-    convention as the hthp_optimization implementation. This is the
-    conservative choice for sizing: single-phase U values are smaller,
-    so the section contributes a larger area.
+def _phase_of(h, h_L, h_V):
+    """Phase index (0=liquid, 1=two-phase, 2=gas) from the enthalpy
+    relative to the side's saturation enthalpies. Supercritical
+    (``h_L is None``) is treated as gas. Deterministic: classification
+    depends only on the saturation positions, never on a CoolProp phase
+    query at a section boundary (which lands on the saturation line and
+    fails for R717 near saturation).
     """
-    t_from = phase_steps[:-1].copy()
-    t_to = phase_steps[1:]
-
-    mask_01 = ((t_from == 0) & (t_to == 1)) | ((t_from == 1) & (t_to == 0))
-    t_from[mask_01] = 0
-
-    mask_12 = ((t_from == 1) & (t_to == 2)) | ((t_from == 2) & (t_to == 1))
-    t_from[mask_12] = 2
-
-    return t_from
+    if h_L is None:
+        return 2
+    if h <= h_L:
+        return 0
+    if h >= h_V:
+        return 2
+    return 1
 
 
 def get_hex_area(hex_component):
@@ -113,14 +102,18 @@ def get_hex_area(hex_component):
     h_steps_hot = hot_out.h.val_SI + Q_sections / hot_in.m.val_SI
     h_steps_cold = cold_in.h.val_SI + Q_sections / cold_in.m.val_SI
 
-    phase_hot = np.array([_phase_at_step(hot_in, h) for h in h_steps_hot])
-    phase_cold = np.array([_phase_at_step(cold_in, h) for h in h_steps_cold])
-
-    sec_hot = _phase_per_section(phase_hot)
-    sec_cold = _phase_per_section(phase_cold)
+    # calc_sections() inserts a breakpoint at every saturation crossing on
+    # either side, so each section is single-phase on each side. Classify
+    # each section by its midpoint enthalpy against that side's saturation
+    # enthalpies — deterministic and free of boundary/CoolProp ambiguity.
+    hL_hot, hV_hot = _sat_enthalpies(hot_in)
+    hL_cold, hV_cold = _sat_enthalpies(cold_in)
 
     area = 0.0
-    for Q, td_log, ph, pc in zip(Q_per_section, td_log_per_section, sec_hot, sec_cold):
-        U = U_VALUES[(int(ph), int(pc))]
-        area += Q / (td_log * U)
+    for i, (Q, td_log) in enumerate(zip(Q_per_section, td_log_per_section)):
+        h_mid_hot = 0.5 * (h_steps_hot[i] + h_steps_hot[i + 1])
+        h_mid_cold = 0.5 * (h_steps_cold[i] + h_steps_cold[i + 1])
+        ph = _phase_of(h_mid_hot, hL_hot, hV_hot)
+        pc = _phase_of(h_mid_cold, hL_cold, hV_cold)
+        area += Q / (td_log * U_VALUES[(ph, pc)])
     return area

@@ -1,11 +1,11 @@
 """
 plot_common.py — Helpers shared by the cascade-screening plotters.
 
-Provides the 4-state classification (OK / V_ONLY / HARD / NOSOLVE) used
-by ``case_steam.py``, ``reclassify_modern.py`` and the Stage 3 grid
-plotters. V̇-only Ommen-envelope violations are kept distinct from hard
-pressure / discharge-temperature failures so they can be rendered as
-"operable per IEA HPT Annex 58 evidence" rather than lumped together.
+Provides the 4-state classification (OK / V_ONLY / HARD / NOSOLVE) used by
+``case_steam.py`` and the feasibility heatmap. V̇-only Ommen-envelope
+violations are kept distinct from hard pressure / discharge-temperature
+failures so each design's dominant exceeded limit can be reported. Only the
+NOSOLVE state excludes a design; the envelope states are informational.
 """
 
 from __future__ import annotations
@@ -253,9 +253,12 @@ def apply_publication_style():
         "savefig.bbox":      "tight",
         # Raster resolution embedded inside the PDF — vector text/lines
         # are unaffected; only imshow / hatch fills get this many pixels.
-        # 200 dpi at 7.48" wide ≈ 1496 px wide → enough for journal
-        # zoom while staying memory-safe on Windows numpy builds.
-        "savefig.dpi":       200,
+        # Elsevier wants 500 dpi for combination line/halftone art; an
+        # annotated imshow heatmap is exactly that. 500 dpi at 7.48" wide
+        # = 3740 px, the full-width requirement on the nose. (600 dpi met
+        # the spec with margin but the larger Agg buffers fragmented the
+        # heap on this Windows numpy build, OOM-ing later small allocs.)
+        "savefig.dpi":       500,
         "figure.dpi":        100,
     })
     _STYLE_APPLIED = True

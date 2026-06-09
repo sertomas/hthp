@@ -4,10 +4,11 @@ the case study (Project 68 modern envelope), for one steam temperature.
 
 Pipeline:
 
-  1. Load case_steam_<T>_enriched.csv produced by reclassify_modern.py.
-  2. Filter to status_modern == "OK" AND ls ∈ {0.30, 0.40, 0.50}
-     (per user instruction — drop LS = 0.60, 0.70 from further analysis).
-  3. For each OK design, re-run simulate_hthp to obtain a live `sim` dict
+  1. Load case_steam_<T>_enriched.csv produced by enrich_screen.py.
+  2. Filter to status_4state != "NOSOLVE" AND ls ∈ {0.30, 0.40, 0.50}
+     (every thermodynamically-feasible design; drop LS = 0.60, 0.70). The
+     Ommen p / T_disch / V̇ limits are informational and do not exclude.
+  3. For each design, re-run simulate_hthp to obtain a live `sim` dict
      with the ExergyAnalysis object (this is required by run_economics —
      the CSV alone is not enough).
   4. Run economics at the *native* simulation scale (m_steam =
@@ -310,24 +311,25 @@ def main(T_steam=None):
         print(f"Could not find {ENRICHED_CSV}. "
               f"Run `python main.py --t-steam {int(T_steam)}` (or stages 1+2 "
               f"individually: case_steam.main(T_steam={T_steam}) followed "
-              f"by reclassify_modern.main(T_steam={T_steam})) first.")
+              f"by enrich_screen.main(T_steam={T_steam})) first.")
         sys.exit(1)
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(GAS_HEATER_DIR, exist_ok=True)
 
     df = pd.read_csv(ENRICHED_CSV)
-    # Keep both modern-OK and V_ONLY designs (V̇ above commercial single-unit
-    # ceiling but p, T compliant — operable as parallel/cascade machinery
-    # per Heaten / SPH MW-scale references). V_ONLY designs are flagged in
-    # the output via the ``V_envelope`` column.
-    designs = df[(df["status_modern"].isin(["OK", "V_ONLY"]))
+    # Consider every thermodynamically-feasible design (i.e. everything except
+    # NOSOLVE — no convergence / over-critical). The Ommen compressor-envelope
+    # limits (p / T_disch / V̇) are informational only and do NOT exclude a
+    # design; designs that exceed the Ommen V̇ ceiling are still flagged in the
+    # output via the ``V_envelope`` column.
+    designs = df[(df["status_4state"] != "NOSOLVE")
                  & (df["ls"].isin([0.30, 0.40, 0.50]))].copy()
     designs = designs.sort_values(by=["f1", "f2", "ls", "T_src"]).reset_index(drop=True)
     n = len(designs)
-    n_ok = (designs["status_modern"] == "OK").sum()
-    n_vonly = (designs["status_modern"] == "V_ONLY").sum()
-    print(f"Running economics on {n} designs at LS ∈ {{0.30, 0.40, 0.50}}: "
-          f"{n_ok} OK + {n_vonly} V_ONLY (flagged: V̇ above commercial ceiling)")
+    n_within = int((designs["status_4state"] == "OK").sum())
+    print(f"Running economics on {n} thermodynamically-feasible designs at "
+          f"LS ∈ {{0.30, 0.40, 0.50}}: {n_within} within the Ommen envelope, "
+          f"{n - n_within} exceed one or more Ommen limits (informational)")
     print(f"  T_steam = {T_steam:.0f} °C")
     print(f"  Base electricity price: {BASE_E1_C} EUR/MWh "
           f"({_eur_mwh_to_ct_kwh(BASE_E1_C):.2f} ct/kWh)")
@@ -373,10 +375,13 @@ def main(T_steam=None):
         pec = _pec_native(sim)
         pec_per_kW = pec["TOTAL"] / Q_H_native_kW
 
-        # V_envelope flag: "OK" if V̇ inside modern envelope, "V_OUT" if not
-        # (i.e. status_modern == "V_ONLY" — V̇ above commercial single-unit
-        # ceiling but p, T compliant).
-        v_flag = "V_OUT" if design["status_modern"] == "V_ONLY" else "OK"
+        # V_envelope flag: "V_OUT" if V̇ is outside the Ommen Table-3 range
+        # for either cycle (informational — does not exclude the design),
+        # "OK" otherwise. CSV booleans round-trip as "True"/"False" strings.
+        def _is_true(v):
+            return str(v).strip().lower() == "true"
+        v_flag = "OK" if (_is_true(design["V_OK_c1"])
+                          and _is_true(design["V_OK_c2"])) else "V_OUT"
 
         common = {
             "f1": f1, "f2": f2, "pair": f"{f1}/{f2}",

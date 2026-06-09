@@ -5,9 +5,9 @@ Compressor envelopes (p, V̇, T_disch limits), envelope-class routing for
 R717 (LP vs HP), state-point conversion, and a cheap pre-feasibility check
 that mirrors the early-exit conditions inside ``simulate_hthp``.
 
-Imported by ``case_steam.py`` (during the 150-case TESPy screen) and by
-``reclassify_modern.py`` (when relabelling a screened design under modern
-compressor envelopes).
+Imported by ``case_steam.py`` (during the 150-case TESPy screen). The Ommen
+envelope is informational only — it records which limit each design exceeds
+but does not exclude a design (only thermodynamic failures do).
 """
 
 from __future__ import annotations
@@ -35,8 +35,45 @@ COMPRESSOR_SPEC = {
     "R744":    (140,   6,     25,    180),
 }
 
-OMMEN_P_TOL = 1.10
 T_DISCH_MAX = 180.0  # °C, Ommen 2015 Table 3 oil-degradation limit
+
+
+def envelope_flags(f1, f2, p_high_c1, p_high_c2, T_disch_c1, T_disch_c2,
+                   V_c1, V_c2, spec, T_disch_max):
+    """Evaluate the six compressor-envelope flags for one converged design.
+
+    Used by the Ommen screen (``case_steam.py``, with ``COMPRESSOR_SPEC`` /
+    ``T_DISCH_MAX``). Pressure limits are applied hard, exactly as the spec
+    states — no tolerance multiplier.
+
+    Returns
+    -------
+    flags : dict   p_OK_c1, p_OK_c2, T_OK_c1, T_OK_c2, V_OK_c1, V_OK_c2 (bool)
+    reason : str   comma-joined failing flags (e.g. "p_c1, V_c2"), "" if feasible
+    feasible : bool
+    label_c1, label_c2 : str   the Ommen envelope class each stage routed to
+    """
+    label_c1 = _envelope_label(f1, p_high_c1)
+    label_c2 = _envelope_label(f2, p_high_c2)
+    p_max_c1, V_min_c1, V_max_c1, _ = spec[label_c1]
+    p_max_c2, V_min_c2, V_max_c2, _ = spec[label_c2]
+
+    flags = {
+        "p_OK_c1": p_high_c1 <= p_max_c1,
+        "p_OK_c2": p_high_c2 <= p_max_c2,
+        "T_OK_c1": T_disch_c1 <= T_disch_max,
+        "T_OK_c2": T_disch_c2 <= T_disch_max,
+        "V_OK_c1": V_min_c1 * 0.999 <= V_c1 <= V_max_c1 * 1.001,
+        "V_OK_c2": V_min_c2 * 0.999 <= V_c2 <= V_max_c2 * 1.001,
+    }
+    feasible = all(flags.values())
+    fail_reasons = [n for n, ok in [
+        ("p_c1", flags["p_OK_c1"]), ("p_c2", flags["p_OK_c2"]),
+        ("T_c1", flags["T_OK_c1"]), ("T_c2", flags["T_OK_c2"]),
+        ("V_c1", flags["V_OK_c1"]), ("V_c2", flags["V_OK_c2"]),
+    ] if not ok]
+    reason = ", ".join(fail_reasons) if not feasible else ""
+    return flags, reason, feasible, label_c1, label_c2
 
 
 def _r717_class_for(p_high_bar: float) -> str:

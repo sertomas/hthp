@@ -59,10 +59,9 @@ from models import simulate_hthp
 from plot_common import classify_status
 from screen_cascade import (
     COMPRESSOR_SPEC,
-    OMMEN_P_TOL,
     T_DISCH_MAX,
+    envelope_flags,
     _T_from_p_h,
-    _envelope_label,
     _pre_classify_failure,
 )
 
@@ -183,25 +182,10 @@ def screen_one_case(
         COP_Lorenz = T_bar_sink / (T_bar_sink - T_bar_source)
         eta_Lorenz = COP / COP_Lorenz
 
-    # ── Ommen envelope flags ────────────────────────────────────────────
-    label_c1 = _envelope_label(f1, p_high_c1)
-    label_c2 = _envelope_label(f2, p_high_c2)
-    p_max_c1, V_min_c1, V_max_c1, _ = COMPRESSOR_SPEC[label_c1]
-    p_max_c2, V_min_c2, V_max_c2, _ = COMPRESSOR_SPEC[label_c2]
-
-    p_OK_c1 = p_high_c1 <= p_max_c1 * OMMEN_P_TOL
-    p_OK_c2 = p_high_c2 <= p_max_c2 * OMMEN_P_TOL
-    T_OK_c1 = T_disch_c1 <= T_DISCH_MAX
-    T_OK_c2 = T_disch_c2 <= T_DISCH_MAX
-    V_OK_c1 = V_min_c1 * 0.999 <= V_dot_c1 <= V_max_c1 * 1.001
-    V_OK_c2 = V_min_c2 * 0.999 <= V_dot_c2 <= V_max_c2 * 1.001
-    feasible = all([p_OK_c1, p_OK_c2, T_OK_c1, T_OK_c2, V_OK_c1, V_OK_c2])
-
-    fail_reasons = [name for name, ok in [
-        ("p_c1", p_OK_c1), ("p_c2", p_OK_c2),
-        ("T_c1", T_OK_c1), ("T_c2", T_OK_c2),
-        ("V_c1", V_OK_c1), ("V_c2", V_OK_c2),
-    ] if not ok]
+    # ── Ommen envelope flags (hard Table-3 limits, no tolerance) ─────────
+    flags, reason, feasible, label_c1, label_c2 = envelope_flags(
+        f1, f2, p_high_c1, p_high_c2, T_disch_c1, T_disch_c2,
+        V_dot_c1, V_dot_c2, COMPRESSOR_SPEC, T_DISCH_MAX)
 
     row = {
         **common,
@@ -225,11 +209,9 @@ def screen_one_case(
         "p_low_c2 [bar]": round(p_low_c2, 2),
         "p_high_c2 [bar]": round(p_high_c2, 2),
         "T_disch_c2 [°C]": round(T_disch_c2, 1),
-        "p_OK_c1": p_OK_c1, "p_OK_c2": p_OK_c2,
-        "T_OK_c1": T_OK_c1, "T_OK_c2": T_OK_c2,
-        "V_OK_c1": V_OK_c1, "V_OK_c2": V_OK_c2,
+        **flags,
         "feasible": feasible,
-        "reason": ", ".join(fail_reasons) if not feasible else "",
+        "reason": reason,
         "status": "ok",
     }
     row["status_4state"] = classify_status(row)

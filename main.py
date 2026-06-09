@@ -21,15 +21,17 @@ Two modes:
 
 Stages (each can be cached / skipped):
     1. Screen        — case_steam.py            (TESPy 150-case sweep, ~5 min)
-    2. Reclassify    — reclassify_modern.py     (post-process, instant)
-    3. Feasibility   — plot_case_steam.py       (Ommen + modern, instant)
+    2. Enrich        — enrich_screen.py         (saturation T + sorted CSVs, instant)
     4. Economics     — case_steam_economics.py  (~3 min)
     5. Per-design    — export_design_details.py (~5 min)
                        (must run before Stage 6 — produces per-design
                        exergoeco_components.csv that several economics plots
                        depend on)
-    6. Eco plots     — plot_case_steam_economics.py (instant)
-    7. Cross-T       — plot_compare_T_steam.py  (after all T_steam cases, instant)
+    6. Eco plots     — plots.economics_main     (instant)
+    7. Cross-T       — plots.compare_main       (after all T_steam cases, instant)
+
+The feasibility "why does it fail" heatmap (feasibility_ommen) is written by
+the standalone `python plots.py cdz`.
 """
 
 from __future__ import annotations
@@ -92,21 +94,10 @@ def stage_screen(T_steam: float = 110.0):
     fn(T_steam=T_steam)
 
 
-def stage_reclassify(T_steam: float = 110.0):
-    """2. Modern envelope reclassification + sorted CSVs."""
-    from reclassify_modern import main as fn
+def stage_enrich(T_steam: float = 110.0):
+    """2. Enrich the Ommen screen with saturation T_evap/T_cond + sorted CSVs."""
+    from enrich_screen import main as fn
     fn(T_steam=T_steam)
-
-
-def stage_feasibility_plots(T_steam: float = 110.0):
-    """3. Feasibility plots in both Ommen-strict and modern modes."""
-    import importlib
-    import plot_case_steam as plot_mod
-    importlib.reload(plot_mod)
-    plot_mod.ENVELOPE_MODE = "ommen"
-    plot_mod.main(T_steam=T_steam)
-    plot_mod.ENVELOPE_MODE = "modern"
-    plot_mod.main(T_steam=T_steam)
 
 
 def stage_economics(T_steam: float = 110.0):
@@ -129,13 +120,13 @@ def stage_export(T_steam: float = 110.0):
 
 def stage_economics_plots(T_steam: float = 110.0):
     """6. c_P heatmap, PEC vs Annex 58, cost breakdown, sensitivities."""
-    from plot_case_steam_economics import main as fn
+    from plots import economics_main as fn
     fn(T_steam=T_steam)
 
 
 def stage_compare():
     """7. Cross-T_steam comparison plots (after all temperatures have run)."""
-    from plot_compare_T_steam import main as fn
+    from plots import compare_main as fn
     fn()
 
 
@@ -160,7 +151,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
     """Run ONE design end-to-end and return a brief summary dict.
 
     Output: per-design folder with connections.csv, components.csv,
-    qt_diagram.png, logph_diagram.png. If ``run_economics`` is True, also
+    qt_diagram.pdf, logph_diagram.pdf. If ``run_economics`` is True, also
     runs the exergoeconomic balance and prints c_P / Z_sum / TCI.
     """
     logging.disable(logging.CRITICAL)
@@ -212,8 +203,8 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
         os.path.join(out_dir, "connections.csv"), index=False)
     _components_dataframe(sim).to_csv(
         os.path.join(out_dir, "components.csv"), index=False)
-    _plot_qt(sim, os.path.join(out_dir, "qt_diagram.png"), title_extra=title)
-    _plot_logph(sim, os.path.join(out_dir, "logph_diagram.png"), title_extra=title)
+    _plot_qt(sim, os.path.join(out_dir, "qt_diagram.pdf"), title_extra=title)
+    _plot_logph(sim, os.path.join(out_dir, "logph_diagram.pdf"), title_extra=title)
 
     summary = {
         "f1": f1, "f2": f2, "ls": ls, "T_src": T_src, "T_steam": T_steam,
@@ -243,7 +234,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
         print(f"  TESPy converged ({sim_dt:.1f}s)  COP={sim['COP']:.3f}  "
               f"ε={sim['epsilon']:.3f}  T_src_out={sim['T_source_out']:.1f} °C")
         print(f"  Files written: {out_dir}/")
-        print(f"    connections.csv  components.csv  qt_diagram.png  logph_diagram.png")
+        print(f"    connections.csv  components.csv  qt_diagram.pdf  logph_diagram.pdf")
         if run_economics and "c_P" in summary:
             print(f"  c_P = {summary['c_P']:.2f} EUR/GJ   "
                   f"Z_sum = {summary['Z_sum']:.2f} EUR/h   "
@@ -286,8 +277,6 @@ def run_pipeline_for_T(args, T_steam: float) -> None:
         if not os.path.exists(ENRICHED_CSV):
             print(f"! {ENRICHED_CSV} missing — run without --only-plots first.")
             return
-        _run_stage("Stage 3: Feasibility plots", stage_feasibility_plots,
-                   False, "", T_steam=T_steam)
         if os.path.exists(ECON_BASE_CSV):
             _run_stage("Stage 6: Economics plots", stage_economics_plots,
                        False, "", T_steam=T_steam)
@@ -301,13 +290,9 @@ def run_pipeline_for_T(args, T_steam: float) -> None:
                stage_screen,
                skip_screen, "cached CSV present", T_steam=T_steam)
 
-    # Stage 2: reclassify (always; instant)
-    _run_stage("Stage 2: Reclassify with modern envelope (instant)",
-               stage_reclassify, False, "", T_steam=T_steam)
-
-    # Stage 3: feasibility plots
-    _run_stage("Stage 3: Feasibility plots — Ommen + modern (instant)",
-               stage_feasibility_plots, False, "", T_steam=T_steam)
+    # Stage 2: enrich the screen (saturation T_evap/T_cond + sorted CSVs)
+    _run_stage("Stage 2: Enrich Ommen screen (instant)",
+               stage_enrich, False, "", T_steam=T_steam)
 
     # Stage 4: economics
     skip_eco = args.skip_economics and os.path.exists(ECON_BASE_CSV)
