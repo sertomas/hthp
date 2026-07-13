@@ -11,9 +11,37 @@ import os
 import numpy as np
 from CoolProp.CoolProp import PropsSI
 
+# ── Exergy-fuel definition (source-water outlet, stream 12) ─────────────────
+# Two system-boundary conventions for the source water are studied:
+#   "outlet_loss" — stream 11 (source in) is always FUEL, stream 12 (source
+#                   out) is always a LOSS:  E_F = E_e1 + E_11,  E_L = E_12.
+#   "outlet_fuel" — stream 12 is a FUEL OUTPUT while it leaves at or above
+#                   ambient (net water fuel E_11 − E_12); only when it leaves
+#                   BELOW ambient is its exergy counted as a LOSS.
+# The choice only moves E_12 between the fuel and loss ledgers: E_P, E_D and
+# every cost quantity (c_P, Z, PEC) are identical under both conventions —
+# only E_F, E_L, epsilon and the component y-factor (E_D / E_F,tot) change.
+# Each convention writes to its own results tree, results/ef_<definition>/,
+# so both datasets coexist; plot_compare_EF_definitions.py reads both trees
+# and writes comparison figures to results/<EF_COMPARE_DIR_NAME>/.
+EF_DEFINITIONS = ("outlet_loss", "outlet_fuel")
+EF_DEFINITION = "outlet_fuel"
+EF_COMPARE_DIR_NAME = "ef_definition_compare"
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-RESULTS_DIR = os.path.join(BASE_DIR, "results")
+RESULTS_BASE_DIR = os.path.join(BASE_DIR, "results")
+RESULTS_DIR = os.path.join(RESULTS_BASE_DIR, f"ef_{EF_DEFINITION}")
+
+
+def ef_results_dir(ef_definition=None):
+    """Results tree for one EF definition (defaults to the active one)."""
+    return os.path.join(RESULTS_BASE_DIR, f"ef_{ef_definition or EF_DEFINITION}")
+
+
+def ef_compare_dir():
+    """Output directory for the cross-definition comparison plots."""
+    return os.path.join(RESULTS_BASE_DIR, EF_COMPARE_DIR_NAME)
 
 # ── Fluid combinations ──────────────────────────────────────────────────────
 # Cycle-2 fluids are restricted to hydrocarbons (R600a, R600). R717 was

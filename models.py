@@ -25,6 +25,7 @@ from exerpy.parser.from_tespy.tespy_parser import to_exerpy
 
 from calculate_heatexchanger_area import get_hex_area
 from config import (
+    EF_DEFINITION,
     M_STEAM,
     SOURCE_DELTA_T,
     SOURCE_MASS_FLOW,
@@ -540,14 +541,16 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # Source water inlet 11 is always a FUEL input (water arrives carrying
         # exergy from the free reservoir, priced at c = 0 downstream).
         #
-        # Source water outlet 12: in fixed-mass-flow mode the outlet temperature
-        # floats. If the water leaves ABOVE ambient it still carries usable
-        # thermal exergy, so 12 is a FUEL OUTPUT — the net water fuel
-        # E_11 − E_12 is then the exergy actually drawn, and its leaving exergy
-        # is not charged to the system. If it leaves at or below ambient, that
-        # leaving exergy is dumped unused and 12 is a genuine LOSS.
+        # Source water outlet 12 depends on config.EF_DEFINITION:
+        #   "outlet_loss" — 12 is always a LOSS (E_F = E_e1 + E_11).
+        #   "outlet_fuel" — in fixed-mass-flow mode the outlet temperature
+        #     floats. While the water leaves AT OR ABOVE ambient it still
+        #     carries usable thermal exergy, so 12 is a FUEL OUTPUT — the net
+        #     water fuel E_11 − E_12 is then the exergy actually drawn, and
+        #     its leaving exergy is not charged to the system. Only when it
+        #     leaves BELOW ambient is that exergy dumped unused → LOSS.
         Tamb_degC = Tamb - 273.15
-        if c12.T.val > Tamb_degC:
+        if EF_DEFINITION == "outlet_fuel" and c12.T.val >= Tamb_degC:
             fuel = {"inputs": ["e1", "11"], "outputs": ["12"]}
             loss = {}
         else:

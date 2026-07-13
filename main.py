@@ -55,7 +55,8 @@ except Exception:
 
 def _paths_for(T_steam: float) -> dict:
     """Return all cached-file paths for a given case-study T_steam."""
-    case_dir = os.path.join("results", f"case_steam_{int(T_steam)}")
+    from config import case_results_dir
+    case_dir = case_results_dir(T_steam)
     tag = f"case_steam_{int(T_steam)}"
     return {
         "CASE_DIR":      case_dir,

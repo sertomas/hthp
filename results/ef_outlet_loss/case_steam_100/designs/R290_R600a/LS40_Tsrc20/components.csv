@@ -1,0 +1,11 @@
+name,type,P [kW],pressure ratio,Δp [bar],η_s,Q [kW],kA [kW/K],UA [kW/K],ΔT_upper [K],ΔT_lower [K],ΔT_pinch [K],LMTD [K],pr_hot,pr_cold,ε_hot,ε_cold,P_in [kW],P_out [kW],η,P_in_total [kW],P_out_total [kW]
+COMP1,Compressor,221.0458,3.9825,-16.5147,0.8,,,,,,,,,,,,,,,,
+COMP2,Compressor,289.0216,3.0281,-14.5857,0.8,,,,,,,,,,,,,,,,
+IHX,HeatExchanger,,,,,-839.1803,74.2487,81.1784,21.4698,5.0,5.0,11.3023,1.0,1.0,0.9522,0.7745,,,,,
+SNK_HX,HeatExchanger,,,,,-1128.2019,196.0458,224.9167,6.582,5.0,5.0,5.7548,1.0,1.0,0.9228,0.994,,,,,
+SRC_HX,HeatExchanger,,,,,-618.1345,86.4663,68.7014,9.8396,5.0,5.0,7.1489,1.0,1.0,0.6625,0.929,,,,,
+MOT1,Motor,,,,,,,,,,,,,,,,,,0.95,,
+MOT2,Motor,,,,,,,,,,,,,,,,,,0.95,,
+VAL1,Valve,,0.2511,16.5147,,,,,,,,,,,,,,,,,
+VAL2,Valve,,0.3302,14.5857,,,,,,,,,,,,,,,,,
+electricity distribution,PowerBus,,,,,,,,,,,,,,,,,,,,

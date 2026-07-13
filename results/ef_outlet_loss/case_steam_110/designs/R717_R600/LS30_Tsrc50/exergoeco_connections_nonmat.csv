@@ -1,0 +1,6 @@
+Connection,Kind,Energy Flow [kW],Exergy Flow [kW],C^TOT [EUR/h],c^TOT [EUR/GJ_ex]
+e1,power,412.8,412.8,75.09,50.52
+e2,power,169.1,169.1,30.75,50.52
+e3,power,160.6,160.6,32.83,56.78
+e4,power,243.8,243.8,44.34,50.52
+e5,power,231.6,231.6,45.9,55.06

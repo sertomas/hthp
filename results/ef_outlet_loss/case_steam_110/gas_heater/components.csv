@@ -1,0 +1,3 @@
+name,type,thermal input [kW],λ (excess air),Q [kW],kA [kW/K],ΔT_log [K],ΔT_upper [K],ΔT_lower [K],pr_hot,pr_cold
+CC,CombustionChamber,2477.385,1.2,,,,,,,
+GAS_HX,HeatExchanger,,,-2229.646,3.787,588.704,1683.421,117.824,1.0,1.0
