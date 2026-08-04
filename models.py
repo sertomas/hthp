@@ -41,12 +41,9 @@ p_source = 3  # bar (source water circulation pressure)
 T_evap_c2 = 60  # °C
 pinch = 5  # K
 
-# Default sink-steam conditions (used when T_steam_override is not provided
-# to simulate_hthp / simulate_gas_heater). These are derived from
-# T_STEAM_DEFAULT so that changing the default in config.py automatically
-# propagates here.
+# Default sink-steam conditions (used when no T_steam_override is passed).
 p_water = p_water_for_T_steam(T_STEAM_DEFAULT)  # bar
-T_water_sat = T_STEAM_DEFAULT  # °C — by definition of T_STEAM_DEFAULT
+T_water_sat = T_STEAM_DEFAULT  # °C
 
 # Pressure drops are neglected on every heat-exchanger side (pr = 1.0),
 # both for the refrigerant streams and for the source/sink water streams.
@@ -56,51 +53,19 @@ _PR = {
     "SNK_HX": (1.0, 1.0),   # (C2 condensing, sink water side)
 }
 
-# Compressor high-side pressure limits per Ommen et al. (2015), Table 3.
-# Cases with cycle high-side pressure exceeding (limit × _OMMEN_P_TOL) fall
-# outside every commercially-available compressor surveyed in the paper and
-# are excluded by simulate_hthp (returns None → cached as "failed").
-# - R290 / R600a: Type 2, 28 bar.
-# - R600 / R1270: not in Ommen Table 3; treated as Type 2 here, mirroring
-#   the proxy mapping used in economics._FLUID_COST_TYPE.
-# - R717: HP envelope (Type 4, 50 bar). LP envelope (Type 3, 28 bar) is
-#   much tighter; switching between LP and HP cost classes happens later
-#   in run_economics based on the simulated discharge pressure.
-# - R744: transcritical Type 5, 140 bar. Cost row exists in Ommen Table 4.
-#   Transcritical handling IS implemented (see _TRANSCRITICAL_FLUIDS,
-#   _R744_P_HIGH_BAR, and the is_c?_transcritical branches in simulate_hthp)
-#   but R744 is not in any active fluid list (FLUIDS_C1 / FLUIDS_C2) — see
-#   the comment block at the top of config.py for the exclusion rationale.
+# Compressor high-side pressure limits (Ommen 2015, Table 3). Designs above
+# (limit x _OMMEN_P_TOL) are excluded by simulate_hthp. R600/R1270 are proxied
+# onto the Type-2 28 bar row; R717 uses the 50 bar HP envelope.
 _OMMEN_P_MAX_BAR = {
     "R290":  28.0,
     "R1270": 28.0,
     "R600a": 28.0,
     "R600":  28.0,
     "R717":  50.0,
-    "R744": 140.0,
 }
 
-# Engineering tolerance applied on top of the Ommen pressure limits.
-# Real-world catalogue pressure ratings are not exactly the rounded values
-# in Ommen Table 3 and machine families do exist a few bar above the listed
-# ceilings. 10 % is a reasonable buffer to keep marginal cases in scope.
+# 10 % buffer on the Ommen pressure limits to keep marginal cases in scope.
 _OMMEN_P_TOL = 1.10
-
-# Transcritical fluids — high-side pressure cannot be set from saturation
-# at the cooling temperature (no phase change above T_crit). Currently only
-# R744 (CO2). Cycle-1 R744 uses a fixed transcritical pressure; the IHX
-# acts as a gas cooler instead of a condenser.
-_TRANSCRITICAL_FLUIDS = {"R744"}
-
-# Default transcritical high-side pressure [bar]. 100 bar is in the
-# typically-optimal 90-120 bar range for CO2 heat-pumping duty
-# (Neksa et al. 1998, "CO2-heat pump water heater"). Not optimised here;
-# could be a design variable in a follow-up study.
-_R744_P_HIGH_BAR = 100.0
-
-
-def _is_transcritical(fluid):
-    return fluid in _TRANSCRITICAL_FLUIDS
 
 
 def _check_ommen_p_limit(fluid, p_high, cycle_label):
@@ -282,28 +247,18 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         Source water inlet temperature [deg C].  Defaults to the module-level
         ``T_source_in`` (20 deg C).
     source_mode : str, optional
-        Source water constraint mode:
-        - ``"fixed_delta_T"``: fix T_in and T_out = T_in - SOURCE_DELTA_T (m free).
-        - ``"fixed_mass_flow"``: fix T_in and m (T_out free).
-        The function-level default is ``"fixed_delta_T"``, but every call
-        site in the pipeline (``main.py``, ``case_steam.py``,
-        ``case_steam_economics.py``, ``export_design_details.py``)
-        passes ``"fixed_mass_flow"`` explicitly. The ΔT mode is retained
-        for ad-hoc programmatic use only.
+        ``"fixed_delta_T"`` fixes T_in and T_out = T_in - SOURCE_DELTA_T (m free);
+        ``"fixed_mass_flow"`` fixes T_in and m (T_out free). The pipeline uses
+        ``"fixed_mass_flow"``.
     m_source : float, optional
         Source water mass flow [kg/s] for ``"fixed_mass_flow"`` mode.
         Defaults to ``SOURCE_MASS_FLOW`` from config.
     T_steam_override : float, optional
         Sink-steam saturation temperature [deg C]. Defaults to
-        ``T_STEAM_DEFAULT`` (100 °C). Lower values relax the cycle-2
-        condensing pressure and bring fluids like R600a back into the
-        Ommen 2015 compressor envelope.
+        ``T_STEAM_DEFAULT`` (100 °C).
     skip_ommen_check : bool, optional
-        If ``True``, skip the Ommen 2015 high-side pressure feasibility
-        gate inside the solver and return the converged state regardless
-        of envelope. Used by the screening stage (``case_steam.py``)
-        to keep out-of-envelope designs visible in the 4-state grid
-        instead of reporting them as ``None``. Default ``False``.
+        If ``True``, skip the Ommen pressure feasibility gate so the screener
+        can keep out-of-envelope designs visible. Default ``False``.
 
     Returns
     -------
@@ -314,14 +269,10 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         - **ean** — ``ExergyAnalysis`` object (needed by ``run_economics``).
         - **COP**, **epsilon**, **E_F**, **E_P**, **E_D** — performance.
         - **fluid_cycle1**, **fluid_cycle2** — fluid names.
-        - **sizing** — dict of component sizing values (HX areas are
-          computed by ``get_hex_area`` from
-          ``calculate_heatexchanger_area``: section-by-section
-          integration of ``A = Q / (LMTD * U)`` with U selected from the
-          phase-pair lookup ``U_VALUES``).
-        - **qt_sections** — pre-computed Q-T section data (kW, °C) ready
-          for plotting; see ``_extract_qt_sections``.
-        - **cycle_states** — state-point data (for log(p)-h diagrams).
+        - **sizing** — component sizing values (volumetric flows, shaft
+          powers, HX areas) for the cost correlations.
+        - **qt_sections** — Q-T section data (kW, °C) for plotting.
+        - **cycle_states** — state-point data for log(p)-h diagrams.
     """
     T_evap_c2_val = T_evap_c2_override if T_evap_c2_override is not None else T_evap_c2
     T_src_in_val = T_source_in_override if T_source_in_override is not None else T_source_in
@@ -336,35 +287,19 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
     T_crit_c1 = PropsSI("Tcrit", fluid_cycle1) - 273.15
     T_crit_c2 = PropsSI("Tcrit", fluid_cycle2) - 273.15
 
-    is_c1_transcritical = _is_transcritical(fluid_cycle1)
-    is_c2_transcritical = _is_transcritical(fluid_cycle2)
-
-    # Critical-temperature pre-checks. For transcritical fluids the cycle
-    # high-side runs above T_crit by design — skip the rejection there.
-    if not is_c1_transcritical and T_cond_c1_est >= T_crit_c1:
-        print(f"  SKIP: {fluid_cycle1} critical temp ({T_crit_c1:.1f} °C) < condensing temp ({T_cond_c1_est:.1f} °C)")
+    # Critical-temperature pre-checks: reject fluids whose condensing
+    # temperature reaches or exceeds the critical temperature.
+    if T_cond_c1_est >= T_crit_c1:
+        print(f"  SKIP: {fluid_cycle1} critical temp ({T_crit_c1:.1f} C) < condensing temp ({T_cond_c1_est:.1f} C)")
         return None
-    if not is_c2_transcritical and T_cond_c2_est >= T_crit_c2:
-        print(f"  SKIP: {fluid_cycle2} critical temp ({T_crit_c2:.1f} °C) < condensing temp ({T_cond_c2_est:.1f} °C)")
-        return None
-    # R744 cycle-1 evaporator is still subcritical (T_evap < 31 °C); reject
-    # if T_evap_c1_est is at or above T_crit (would require an unusual
-    # transcritical evaporation that this model doesn't support).
-    if is_c1_transcritical and T_evap_c1_est >= T_crit_c1:
-        print(f"  SKIP: {fluid_cycle1} evaporator T ({T_evap_c1_est:.1f} °C) >= T_crit "
-              f"({T_crit_c1:.1f} °C) — transcritical evap not supported")
+    if T_cond_c2_est >= T_crit_c2:
+        print(f"  SKIP: {fluid_cycle2} critical temp ({T_crit_c2:.1f} C) < condensing temp ({T_cond_c2_est:.1f} C)")
         return None
 
     try:
         p_evap_c1 = PropsSI("P", "T", T_evap_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
-        if is_c1_transcritical:
-            p_cond_c1 = _R744_P_HIGH_BAR  # fixed transcritical high-side pressure
-        else:
-            p_cond_c1 = PropsSI("P", "T", T_cond_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
-        if is_c2_transcritical:
-            p_cond_c2 = _R744_P_HIGH_BAR
-        else:
-            p_cond_c2 = PropsSI("P", "T", T_cond_c2_est + 273.15, "Q", 1, fluid_cycle2) / 1e5
+        p_cond_c1 = PropsSI("P", "T", T_cond_c1_est + 273.15, "Q", 1, fluid_cycle1) / 1e5
+        p_cond_c2 = PropsSI("P", "T", T_cond_c2_est + 273.15, "Q", 1, fluid_cycle2) / 1e5
 
         nw = Network(T_unit="C", p_unit="bar", h_unit="kJ / kg", m_unit="kg / s", iterinfo=False)
 
@@ -415,7 +350,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         nw.add_conns(c31, c32, c32c, c33, c34)
         nw.add_conns(c41, c42)
 
-        # Electrical power network — only the two compressor motors remain
+        # Electrical power network: grid feeding the two compressor motors
         power_input = PowerSource("grid")
         distribution = PowerBus("electricity distribution", num_in=1, num_out=2)
         motor1 = Motor("MOT1")
@@ -428,10 +363,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         e5 = PowerConnection(motor2, "power_out", comp2, "power", label="e5")
         nw.add_conns(e1, e2, e3, e4, e5)
 
-        # Source water boundary conditions
-        # No Ref constraint on c12.p needed: with SRC_HX pr1=1 (water side),
-        # c12.p is automatically equal to c11.p, and adding the Ref would
-        # over-determine the system.
+        # Source water boundary conditions (c12.p follows c11.p via SRC_HX pr1=1).
         if source_mode == "fixed_mass_flow":
             m_val = m_source if m_source is not None else SOURCE_MASS_FLOW
             c11.set_attr(fluid={"water": 1}, T=T_src_in_val, p=p_source,
@@ -443,35 +375,20 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         # Cycle 1 boundary conditions
         c21.set_attr(fluid={fluid_cycle1: 1}, td_dew=pinch)
         c22.set_attr(p=p_cond_c1)
-        if is_c1_transcritical:
-            # Gas cooler outlet: no saturation. Set hot-end exit T directly
-            # (= T_evap_c2 + pinch — same target as the subcritical condenser).
-            c23.set_attr(T=T_cond_c1_est)
-        else:
-            c23.set_attr(td_bubble=pinch)
+        c23.set_attr(td_bubble=pinch)
         c24.set_attr(p=p_evap_c1)
 
         # Cycle 2 boundary conditions
         c31.set_attr(fluid={fluid_cycle2: 1}, td_dew=pinch)
         c32.set_attr(p=p_cond_c2)
-        if is_c2_transcritical:
-            c33.set_attr(T=T_cond_c2_est)
-        else:
-            c33.set_attr(x=0)
+        c33.set_attr(x=0)
         c34.set_attr(T=T_evap_c2_val)
 
-        # Sink water boundary conditions.
-        # No Ref constraint on c42.p: with SNK_HX pr2=1 (water/steam side),
-        # c42.p is automatically equal to c41.p (both at the steam saturation
-        # pressure), and adding the Ref would over-determine the system.
+        # Sink water boundary conditions (c42.p follows c41.p via SNK_HX pr2=1).
         c41.set_attr(fluid={"water": 1}, p=p_water_val, x=0, m=M_STEAM)
         c42.set_attr(x=1)
 
-        # Component parameters
-        # Compressor isentropic efficiency and motor electrical efficiency taken
-        # from Ommen et al. (2015), "Technical and economic working domains of
-        # industrial heat pumps: Part 1 - Single stage vapour compression heat
-        # pumps", Int. J. Refrigeration 55, 168-182 — Table 1.
+        # Component parameters (eta_s, eta_motor from Ommen 2015, Table 1).
         comp1.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
         comp2.set_attr(eta_s=0.80)   # Ommen 2015, Table 1
         src_hx.set_attr(pr1=_PR["SRC_HX"][0], pr2=_PR["SRC_HX"][1])
@@ -482,40 +399,29 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
 
         nw.solve("design")
 
-        # Second solve: relax pressures and use pinch constraints. For
-        # transcritical cycles the high-side pressure is a design variable
-        # we hold fixed (not driven by saturation), and the gas-cooler
-        # outlet temperature is already pinned by c23.T (cycle 1) or c33.T
-        # (cycle 2), so adding td_pinch on the IHX would over-constrain.
+        # Second solve: relax the high-side and evaporator pressures and let
+        # the pinch constraints (HX terminal temperature differences and the
+        # IHX internal pinch) drive the operating point.
         c24.set_attr(p=None)
-        if not is_c1_transcritical:
-            c22.set_attr(p=None)
-        if not is_c2_transcritical:
-            c32.set_attr(p=None)
+        c22.set_attr(p=None)
+        c32.set_attr(p=None)
         src_hx.set_attr(ttd_l=5)
-        if not (is_c1_transcritical or is_c2_transcritical):
-            ihx.set_attr(td_pinch=5)
+        ihx.set_attr(td_pinch=5)
         snk_hx.set_attr(ttd_l=5)
 
         nw.solve("design")
 
-        # Reject if subcritical cycle-1 pressure reaches 95 % of critical.
-        # Skipped for transcritical cycle 1 — operation above p_crit is the
-        # whole point of the cycle there.
-        if not is_c1_transcritical:
-            p_crit_c1 = PropsSI("Pcrit", fluid_cycle1) / 1e5  # bar
-            for conn in [c21, c22, c22c, c23, c24]:
-                if conn.p.val >= 0.95 * p_crit_c1:
-                    print(f"  SKIP: {fluid_cycle1} at {conn.label} reaches "
-                          f"{conn.p.val:.1f} bar >= 95% of p_crit "
-                          f"({p_crit_c1:.1f} bar)")
-                    return None
+        # Reject if the cycle-1 pressure reaches 95 % of critical.
+        p_crit_c1 = PropsSI("Pcrit", fluid_cycle1) / 1e5  # bar
+        for conn in [c21, c22, c22c, c23, c24]:
+            if conn.p.val >= 0.95 * p_crit_c1:
+                print(f"  SKIP: {fluid_cycle1} at {conn.label} reaches "
+                      f"{conn.p.val:.1f} bar >= 95% of p_crit "
+                      f"({p_crit_c1:.1f} bar)")
+                return None
 
-        # Reject if either cycle's high-side pressure exceeds the Ommen 2015
-        # compressor envelope (no machine in the paper covers that operating
-        # point and the cost correlation cannot be evaluated honestly).
-        # Bypassed when ``skip_ommen_check=True`` so the feasibility screener
-        # can post-process the full data and report which constraint failed.
+        # Reject if either cycle exceeds the Ommen compressor envelope
+        # (bypassed when skip_ommen_check=True for the feasibility screener).
         p_high_c1 = max(c22.p.val, c22c.p.val, c23.p.val)
         p_high_c2 = max(c32.p.val, c32c.p.val, c33.p.val)
         if not skip_ommen_check:
@@ -577,15 +483,9 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         V_dot_comp1 = c21.m.val / rho_21 * 3600  # m³/h
         V_dot_comp2 = c31.m.val / rho_31 * 3600  # m³/h
 
-        # Volumetric efficiency, Dincer (2010) reciprocating-compressor form:
-        #   η_vol = 1 − R·(v_in/v_out − 1)
-        # equivalently (since v = 1/ρ, so v_in/v_out = ρ_out/ρ_in):
-        #   η_vol = 1 − R·(ρ_disch/ρ_suc − 1)
-        # The clearance-volume ratio R = 0.06 follows Hoang et al. (2025),
-        # which adopts this value with the same Dincer formula. η_vol enters
-        # the Ommen compressor PEC correlation as V_dot / η_vol (the
-        # displaced volume the compressor must be sized for, not just the
-        # actual suction flow).
+        # Volumetric efficiency, Dincer (2010): eta_vol = 1 - R*(rho_disch/rho_suc - 1),
+        # clearance ratio R = 0.06 (Hoang et al. 2025). Enters the compressor
+        # PEC as the displaced volume V_dot / eta_vol.
         CLEARANCE_RATIO = 0.06
         eta_vol_comp1 = 1.0 - CLEARANCE_RATIO * ((rho_22 / rho_21) - 1.0)
         eta_vol_comp2 = 1.0 - CLEARANCE_RATIO * ((rho_32 / rho_31) - 1.0)
@@ -594,9 +494,7 @@ def simulate_hthp(fluid_cycle1, fluid_cycle2, T_evap_c2_override=None,
         W_comp1 = abs(comp1.P.val) / 1000
         W_comp2 = abs(comp2.P.val) / 1000
 
-        # HX areas [m²]: section-by-section integration of A = Q / (LMTD * U),
-        # with U selected per section from the phase-pair lookup in
-        # calculate_heatexchanger_area.U_VALUES (Ommen 2015 + assumptions).
+        # HX areas [m^2] from get_hex_area (section-wise A = Q / (LMTD * U)).
         A_src_hx = get_hex_area(src_hx)
         A_ihx = get_hex_area(ihx)
         A_snk_hx = get_hex_area(snk_hx)
@@ -666,10 +564,7 @@ def simulate_gas_heater(eta_gas=0.90, T_steam_override=None):
     Parameters
     ----------
     eta_gas : float, optional
-        Thermal efficiency of the gas heater. Default 0.90 from Ommen et al.
-        (2015), "Technical and economic working domains of industrial heat
-        pumps: Part 1", Int. J. Refrigeration 55, 168-182, Table 1
-        ("Natural gas burner efficiency = 0.9").
+        Gas-heater thermal efficiency. Default 0.90 (Ommen 2015, Table 1).
     T_steam_override : float, optional
         Sink-steam saturation temperature [deg C]. Defaults to
         ``T_STEAM_DEFAULT`` (100 °C). The water-side pressure is derived
@@ -756,9 +651,7 @@ def simulate_gas_heater(eta_gas=0.90, T_steam_override=None):
     M_CO2 = 44.010   # kg/kmol
     m_dot_CO2 = g2.m.val * (M_CO2 / M_CH4)   # kg/s
 
-    # Full exerpy-format network dump (state points + components +
-    # exergy decomposition per stream). Same shape as the HTHP path so
-    # downstream serialisation can reuse the same JSON / CSV layout.
+    # Full exerpy-format network dump (same shape as the HTHP path).
     exerpy_data = to_exerpy(nw, Tamb=Tamb, pamb=pamb)
 
     return {

@@ -16,20 +16,19 @@ Two modes:
 2. Single-design fast path (~5 s):
 
        python main.py --design R290 R600 0.40 40
-                                            # f1, f2, LS (0–1), T_src (°C)
+                                            # f1, f2, LS (0-1), T_src (°C)
        python main.py --list-designs        # print all available OK designs
 
 Stages (each can be cached / skipped):
     1. Screen        — case_steam.py            (TESPy 150-case sweep, ~5 min)
-    2. Reclassify    — reclassify_modern.py     (post-process, instant)
-    3. Feasibility   — plot_case_steam.py       (Ommen + modern, instant)
-    4. Economics     — case_steam_economics.py  (~3 min)
-    5. Per-design    — export_design_details.py (~5 min)
-                       (must run before Stage 6 — produces per-design
+    2. Enrich        — enrich_screen.py         (saturation T + sorted CSVs, instant)
+    3. Economics     — case_steam_economics.py  (~3 min)
+    4. Per-design    — export_design_details.py (~5 min)
+                       (must run before the economics plots — produces per-design
                        exergoeco_components.csv that several economics plots
                        depend on)
-    6. Eco plots     — plot_case_steam_economics.py (instant)
-    7. Cross-T       — plot_compare_T_steam.py  (after all T_steam cases, instant)
+    5. Eco plots     — plots.economics_main     (instant)
+    6. Cross-T       — plots.compare_main       (after all T_steam cases, instant)
 """
 
 from __future__ import annotations
@@ -48,10 +47,9 @@ except Exception:
 
 
 # ── Per-T_steam path computation ──────────────────────────────────────────────
-# The pipeline now supports multiple steam temperatures. Path constants are
-# computed dynamically from the per-stage T_steam — see _paths_for(T_steam)
-# below. Module-level constants are kept for backwards compatibility (e.g. the
-# `--design` single-design fast path defaults to 110 °C).
+# Path constants are computed dynamically from the per-stage T_steam — see
+# _paths_for(T_steam) below. Module-level constants drive the `--design`
+# single-design fast path, which defaults to 110 °C.
 
 def _paths_for(T_steam: float) -> dict:
     """Return all cached-file paths for a given case-study T_steam."""
@@ -67,7 +65,7 @@ def _paths_for(T_steam: float) -> dict:
     }
 
 
-# Default (legacy) 110 °C paths used by the single-design fast path
+# Default 110 °C paths used by the single-design fast path
 _default_paths  = _paths_for(110.0)
 CASE_DIR        = _default_paths["CASE_DIR"]
 SCREEN_CSV      = _default_paths["SCREEN_CSV"]
@@ -83,7 +81,7 @@ def _t() -> float:
 
 
 def _banner(title: str) -> None:
-    bar = "═" * len(title)
+    bar = "=" * len(title)
     print(f"\n{bar}\n{title}\n{bar}")
 
 
@@ -93,50 +91,39 @@ def stage_screen(T_steam: float = 110.0):
     fn(T_steam=T_steam)
 
 
-def stage_reclassify(T_steam: float = 110.0):
-    """2. Modern envelope reclassification + sorted CSVs."""
-    from reclassify_modern import main as fn
+def stage_enrich(T_steam: float = 110.0):
+    """2. Enrich the Ommen screen with saturation T_evap/T_cond + sorted CSVs."""
+    from enrich_screen import main as fn
     fn(T_steam=T_steam)
 
 
-def stage_feasibility_plots(T_steam: float = 110.0):
-    """3. Feasibility plots in both Ommen-strict and modern modes."""
-    import importlib
-    import plot_case_steam as plot_mod
-    importlib.reload(plot_mod)
-    plot_mod.ENVELOPE_MODE = "ommen"
-    plot_mod.main(T_steam=T_steam)
-    plot_mod.ENVELOPE_MODE = "modern"
-    plot_mod.main(T_steam=T_steam)
-
-
 def stage_economics(T_steam: float = 110.0):
-    """4. Exergoeconomic analysis on OK designs at LS ∈ {0.30, 0.40, 0.50}."""
+    """3. Exergoeconomic analysis on OK designs at LS ∈ {0.30, 0.40, 0.50}."""
     from case_steam_economics import main as fn
     fn(T_steam=T_steam)
 
 
 def stage_export(T_steam: float = 110.0):
-    """5. Per-design connections / components / Q-T / log(p)-h.
+    """4. Per-design connections / components / Q-T / log(p)-h.
 
-    Runs BEFORE the economics plots so that the per-design
-    exergoeco_components.csv files exist when stage_economics_plots tries
-    to read them — otherwise the cost-breakdown / Tsatsaronis / ranking
-    plots silently fall back to a placeholder.
+    Runs before the economics plots so the per-design
+    exergoeco_components.csv files exist when stage_economics_plots reads
+    them. Without them the cost-breakdown, Tsatsaronis, and ranking plots
+    fall back to a placeholder.
     """
     from export_design_details import main as fn
     fn(T_steam=T_steam)
 
 
 def stage_economics_plots(T_steam: float = 110.0):
-    """6. c_P heatmap, PEC vs Annex 58, cost breakdown, sensitivities."""
-    from plot_case_steam_economics import main as fn
+    """5. c_P heatmap, PEC vs Annex 58, cost breakdown, sensitivities."""
+    from plots import economics_main as fn
     fn(T_steam=T_steam)
 
 
 def stage_compare():
-    """7. Cross-T_steam comparison plots (after all temperatures have run)."""
-    from plot_compare_T_steam import main as fn
+    """6. Cross-T_steam comparison plots (after all temperatures have run)."""
+    from plots import compare_main as fn
     fn()
 
 
@@ -144,9 +131,9 @@ def _run_stage(label: str, fn, force_skip: bool = False, skip_reason: str = "",
                *fn_args, **fn_kwargs):
     """Run a stage with timing and clear console framing."""
     if force_skip:
-        print(f"\n── {label}  ❯  SKIPPED ({skip_reason})")
+        print(f"\n-- {label}  >  SKIPPED ({skip_reason})")
         return
-    print(f"\n── {label}")
+    print(f"\n-- {label}")
     t0 = _t()
     fn(*fn_args, **fn_kwargs)
     print(f"     done in {_t() - t0:.1f} s")
@@ -161,7 +148,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
     """Run ONE design end-to-end and return a brief summary dict.
 
     Output: per-design folder with connections.csv, components.csv,
-    qt_diagram.png, logph_diagram.png. If ``run_economics`` is True, also
+    qt_diagram.pdf, logph_diagram.pdf. If ``run_economics`` is True, also
     runs the exergoeconomic balance and prints c_P / Z_sum / TCI.
     """
     logging.disable(logging.CRITICAL)
@@ -213,8 +200,8 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
         os.path.join(out_dir, "connections.csv"), index=False)
     _components_dataframe(sim).to_csv(
         os.path.join(out_dir, "components.csv"), index=False)
-    _plot_qt(sim, os.path.join(out_dir, "qt_diagram.png"), title_extra=title)
-    _plot_logph(sim, os.path.join(out_dir, "logph_diagram.png"), title_extra=title)
+    _plot_qt(sim, os.path.join(out_dir, "qt_diagram.pdf"), title_extra=title)
+    _plot_logph(sim, os.path.join(out_dir, "logph_diagram.pdf"), title_extra=title)
 
     summary = {
         "f1": f1, "f2": f2, "ls": ls, "T_src": T_src, "T_steam": T_steam,
@@ -244,7 +231,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
         print(f"  TESPy converged ({sim_dt:.1f}s)  COP={sim['COP']:.3f}  "
               f"ε={sim['epsilon']:.3f}  T_src_out={sim['T_source_out']:.1f} °C")
         print(f"  Files written: {out_dir}/")
-        print(f"    connections.csv  components.csv  qt_diagram.png  logph_diagram.png")
+        print(f"    connections.csv  components.csv  qt_diagram.pdf  logph_diagram.pdf")
         if run_economics and "c_P" in summary:
             print(f"  c_P = {summary['c_P']:.2f} EUR/GJ   "
                   f"Z_sum = {summary['Z_sum']:.2f} EUR/h   "
@@ -256,7 +243,7 @@ def run_single_design(f1: str, f2: str, ls: float, T_src: float,
 
 
 def list_designs() -> None:
-    """Print a table of all OK (modern) designs from the cached economics CSV."""
+    """Print a table of all OK designs from the cached economics CSV."""
     import pandas as pd
     if not os.path.exists(ECON_BASE_CSV):
         print(f"! {ECON_BASE_CSV} missing — run the pipeline first.")
@@ -265,7 +252,7 @@ def list_designs() -> None:
     cols = ["pair", "ls", "T_src", "COP", "eta_Lorenz",
             "c_P [EUR/GJ]", "PEC [EUR/kW]"]
     available = [c for c in cols if c in df.columns]
-    print(f"\nAll OK (modern) designs at LS ∈ {{0.30, 0.40, 0.50}} — "
+    print(f"\nAll OK designs at LS ∈ {{0.30, 0.40, 0.50}} — "
           f"{len(df)} total, sorted by c_P:\n")
     print(df[available].to_string(index=False))
 
@@ -287,13 +274,11 @@ def run_pipeline_for_T(args, T_steam: float) -> None:
         if not os.path.exists(ENRICHED_CSV):
             print(f"! {ENRICHED_CSV} missing — run without --only-plots first.")
             return
-        _run_stage("Stage 3: Feasibility plots", stage_feasibility_plots,
-                   False, "", T_steam=T_steam)
         if os.path.exists(ECON_BASE_CSV):
-            _run_stage("Stage 6: Economics plots", stage_economics_plots,
+            _run_stage("Stage 5: Economics plots", stage_economics_plots,
                        False, "", T_steam=T_steam)
         else:
-            print("\n── Stage 6 skipped (no cached economics CSV)")
+            print("\n-- Economics plots skipped (no cached economics CSV)")
         return
 
     # Stage 1: TESPy 150-case screen
@@ -302,34 +287,30 @@ def run_pipeline_for_T(args, T_steam: float) -> None:
                stage_screen,
                skip_screen, "cached CSV present", T_steam=T_steam)
 
-    # Stage 2: reclassify (always; instant)
-    _run_stage("Stage 2: Reclassify with modern envelope (instant)",
-               stage_reclassify, False, "", T_steam=T_steam)
+    # Stage 2: enrich the screen (saturation T_evap/T_cond + sorted CSVs)
+    _run_stage("Stage 2: Enrich Ommen screen (instant)",
+               stage_enrich, False, "", T_steam=T_steam)
 
-    # Stage 3: feasibility plots
-    _run_stage("Stage 3: Feasibility plots — Ommen + modern (instant)",
-               stage_feasibility_plots, False, "", T_steam=T_steam)
-
-    # Stage 4: economics
+    # Stage 3: economics
     skip_eco = args.skip_economics and os.path.exists(ECON_BASE_CSV)
-    _run_stage("Stage 4: Exergoeconomic analysis "
+    _run_stage("Stage 3: Exergoeconomic analysis "
                "(OK designs at LS ∈ {0.30, 0.40, 0.50}, ~3 min)",
                stage_economics,
                skip_eco, "cached economics CSV present", T_steam=T_steam)
 
-    # Stage 5: per-design export (run BEFORE plots so the cost-breakdown
-    # / Tsatsaronis / ranking plots have access to the per-design
-    # exergoeco_components.csv files; otherwise those plots get skipped).
+    # Stage 4: per-design export, run before the plots so the cost-breakdown,
+    # Tsatsaronis, and ranking plots can read the per-design
+    # exergoeco_components.csv files; otherwise those plots get skipped.
     skip_export = args.skip_export or args.no_export
-    _run_stage("Stage 5: Per-design exports — connections / components / "
+    _run_stage("Stage 4: Per-design exports — connections / components / "
                "qt / log(p)-h (~5 min)",
                stage_export,
                skip_export, "--skip-export / --no-export", T_steam=T_steam)
 
-    # Stage 6: economics plots (depends on per-design exergoeco CSVs from
-    # Stage 5 for the C_D + Z, Z-only, Tsatsaronis, ranking, and best-design
-    # plots; falls back gracefully if Stage 5 was skipped).
-    _run_stage("Stage 6: Economics plots (instant)",
+    # Stage 5: economics plots. The C_D + Z, Z-only, Tsatsaronis, ranking, and
+    # best-design plots depend on the per-design exergoeco CSVs from the export
+    # stage; they fall back gracefully if that stage was skipped.
+    _run_stage("Stage 5: Economics plots (instant)",
                stage_economics_plots, False, "", T_steam=T_steam)
 
 
@@ -350,11 +331,11 @@ def run_pipeline(args) -> None:
     # present on disk (either ran them now or they were already cached).
     if all(os.path.exists(_paths_for(T)["ECON_BASE_CSV"]) for T in T_STEAMS_TO_RUN):
         _banner("Cross-T_steam comparison")
-        _run_stage("Stage 7: Cross-T_steam comparison plots", stage_compare)
+        _run_stage("Stage 6: Cross-T_steam comparison plots", stage_compare)
     else:
         missing = [int(T) for T in T_STEAMS_TO_RUN
                    if not os.path.exists(_paths_for(T)["ECON_BASE_CSV"])]
-        print(f"\n── Stage 7 (comparison) skipped — economics CSV missing for "
+        print(f"\n-- Cross-T_steam comparison skipped — economics CSV missing for "
               f"T_steam ∈ {missing}. Re-run with --t-steam all to populate.")
 
 
@@ -364,8 +345,7 @@ def main():
     from config import m_steam_label as _msl
     parser = argparse.ArgumentParser(
         description="HTHP case-study pipeline orchestrator "
-                    f"(steam ∈ {{100, 110, 120}} °C, native scale {_msl()}, "
-                    "modern envelope).",
+                    f"(steam ∈ {{100, 110, 120}} °C, native scale {_msl()}).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples
@@ -386,7 +366,7 @@ Examples
                         metavar=("F1", "F2", "LS", "T_SRC"),
                         help="Run ONE design end-to-end (~5 s) and exit.")
     parser.add_argument("--list-designs", action="store_true",
-                        help="Print the table of all OK (modern) designs and exit.")
+                        help="Print the table of all OK designs and exit.")
 
     # Per-T_steam selection
     parser.add_argument("--t-steam", default="all",
